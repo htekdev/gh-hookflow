@@ -162,14 +162,14 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 	// Define hookflow hooks
 	hookflowPreHook := map[string]interface{}{
 		"type":       "command",
-		"bash":       "hookflow run --raw --event-type preToolUse",
-		"powershell": "hookflow run --raw --event-type preToolUse",
+		"bash":       "gh hookflow run --raw --event-type preToolUse",
+		"powershell": "gh hookflow run --raw --event-type preToolUse",
 		"timeoutSec": 60,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
-		"bash":       "hookflow run --raw --event-type postToolUse",
-		"powershell": "hookflow run --raw --event-type postToolUse",
+		"bash":       "gh hookflow run --raw --event-type postToolUse",
+		"powershell": "gh hookflow run --raw --event-type postToolUse",
 		"timeoutSec": 60,
 	}
 
@@ -226,11 +226,11 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 
 // mergeMCPConfigJSON creates or merges hookflow MCP server into ~/.copilot/mcp-config.json
 func mergeMCPConfigJSON(path string, force bool) error {
-	// Define hookflow MCP server
+	// Define hookflow MCP server (uses gh extension)
 	hookflowMCP := map[string]interface{}{
 		"type":    "stdio",
-		"command": "hookflow",
-		"args":    []string{"mcp", "serve"},
+		"command": "gh",
+		"args":    []string{"hookflow", "mcp", "serve"},
 		"tools":   []string{"*"},
 	}
 
@@ -713,18 +713,18 @@ steps:
 
 ### Validation Errors
 
-Run ` + "`hookflow validate`" + ` to check workflow syntax:
+Run ` + "`gh hookflow validate`" + ` to check workflow syntax:
 
 ` + "```bash" + `
-hookflow validate --file .github/hookflows/my-workflow.yml
+gh hookflow validate --file .github/hookflows/my-workflow.yml
 ` + "```" + `
 
 ### Testing Workflows
 
-Use ` + "`hookflow test`" + ` to simulate events:
+Use ` + "`gh hookflow test`" + ` to simulate events:
 
 ` + "```bash" + `
-hookflow test --workflow my-workflow --event file --path "test.env"
+gh hookflow test --workflow my-workflow --event file --path "test.env"
 ` + "```" + `
 `
 }

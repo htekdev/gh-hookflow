@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -39,8 +40,13 @@ func runCheckSetup(cmd *cobra.Command, args []string) error {
 	copilotDir := filepath.Join(homeDir, ".copilot")
 	allPassed := true
 
-	// Check 1: hookflow in PATH (if we're running, it's accessible)
-	fmt.Println("✓ hookflow is in PATH")
+	// Check 1: gh hookflow extension is available
+	if isGHHookflowAvailable() {
+		fmt.Println("✓ gh hookflow is available")
+	} else {
+		fmt.Println("✗ gh hookflow not available - Install with: gh extension install htekdev/gh-hookflow")
+		allPassed = false
+	}
 
 	// Check 2: ~/.copilot/hooks.json has hookflow
 	hooksFile := filepath.Join(copilotDir, "hooks.json")
@@ -65,6 +71,13 @@ func runCheckSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// isGHHookflowAvailable checks if the gh hookflow extension is installed and working
+func isGHHookflowAvailable() bool {
+	cmd := exec.Command("gh", "hookflow", "version")
+	err := cmd.Run()
+	return err == nil
 }
 
 // hasHookflowHooks checks if hooks.json exists and contains hookflow in preToolUse or postToolUse
