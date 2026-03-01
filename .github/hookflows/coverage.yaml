@@ -1,0 +1,36 @@
+name: Test Coverage Enforcement
+description: Ensures code changes maintain minimum test coverage
+
+triggers:
+  - event: preToolUse
+    tools: [git_commit]
+
+steps:
+  - name: Run tests with coverage
+    run: |
+      go test ./... -coverprofile=coverage.out -covermode=atomic
+      if ($LASTEXITCODE -ne 0) {
+        Write-Error "Tests failed"
+        exit 1
+      }
+
+  - name: Check coverage threshold
+    run: |
+      $threshold = 70
+      $output = go tool cover -func=coverage.out | Select-String "total:"
+      if ($output -match '(\d+\.?\d*)%') {
+        $coverage = [double]$matches[1]
+        Write-Host "Total coverage: $coverage%"
+        if ($coverage -lt $threshold) {
+          Write-Error "Coverage $coverage% is below $threshold% threshold"
+          exit 1
+        }
+        Write-Host "Coverage meets threshold"
+      } else {
+        Write-Error "Could not parse coverage output"
+        exit 1
+      }
+
+  - name: Cleanup
+    run: |
+      if (Test-Path coverage.out) { Remove-Item coverage.out }
