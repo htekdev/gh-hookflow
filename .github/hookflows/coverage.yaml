@@ -1,9 +1,11 @@
 name: Test Coverage Enforcement
-description: Ensures code changes maintain minimum test coverage
+description: Ensures code changes maintain minimum test coverage before commit
 
-triggers:
-  - event: preToolUse
-    tools: [git_commit]
+on:
+  commit:
+    lifecycle: pre
+
+blocking: true
 
 steps:
   - name: Run tests with coverage
