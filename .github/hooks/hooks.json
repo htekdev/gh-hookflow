@@ -2,9 +2,9 @@
   "hooks": {
     "sessionStart": [
       {
-        "bash": "hookflow check-setup || echo '{\"systemMessage\":\"⚠️ hookflow not configured. Run: hookflow init\"}'",
-        "comment": "Ensure hookflow is installed and configured",
-        "powershell": "hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{\"systemMessage\":\"hookflow not configured. Run: hookflow init\"}' }",
+        "bash": "gh hookflow check-setup || echo '{\"systemMessage\":\"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow \u0026\u0026 gh hookflow init\"}'",
+        "comment": "Ensure gh hookflow extension is installed and configured",
+        "powershell": "gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{\"systemMessage\":\"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init\"}' }",
         "timeoutSec": 10,
         "type": "command"
       }

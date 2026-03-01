@@ -278,10 +278,10 @@ func mergeRepoHooksJSON(path string, force bool) error {
 	// Define sessionStart enforcement hook
 	sessionStartHook := map[string]interface{}{
 		"type":       "command",
-		"bash":       `hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: hookflow init"}'`,
-		"powershell": `hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: hookflow init"}' }`,
+		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
+		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
 		"timeoutSec": 10,
-		"comment":    "Ensure hookflow is installed and configured",
+		"comment":    "Ensure gh hookflow extension is installed and configured",
 	}
 
 	// Load existing config or create new one
