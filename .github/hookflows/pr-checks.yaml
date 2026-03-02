@@ -1,0 +1,104 @@
+name: PR Check Monitor
+description: After push, monitors linked PR checks and reports results back to the agent
+
+on:
+  push:
+    lifecycle: post
+
+blocking: false
+
+steps:
+  - name: Find linked PR
+    run: |
+      $branch = git rev-parse --abbrev-ref HEAD
+      Write-Host "Branch: $branch"
+
+      if ($branch -eq "main" -or $branch -eq "master") {
+        Write-Host "Direct push to $branch - no PR to monitor"
+        exit 0
+      }
+
+      $prJson = gh pr list --head $branch --json number,url,title --limit 1 2>$null
+      if (!$prJson -or $prJson -eq "[]") {
+        Write-Host "No open PR found for branch '$branch'. Create one with: gh pr create"
+        exit 0
+      }
+
+      $pr = $prJson | ConvertFrom-Json | Select-Object -First 1
+      Write-Host "Found PR #$($pr.number): $($pr.title)"
+      Write-Host "URL: $($pr.url)"
+
+      # Store PR number for next step
+      $env:PR_NUMBER = $pr.number
+
+  - name: Monitor PR checks
+    run: |
+      $branch = git rev-parse --abbrev-ref HEAD
+      $prJson = gh pr list --head $branch --json number,title --limit 1 2>$null
+
+      if (!$prJson -or $prJson -eq "[]") {
+        exit 0
+      }
+
+      $pr = ($prJson | ConvertFrom-Json)[0]
+      $prNumber = $pr.number
+
+      Write-Host ""
+      Write-Host "Monitoring checks for PR #$prNumber..."
+      Write-Host ""
+
+      # Wait for checks to appear (they may take a moment after push)
+      $maxWait = 30
+      $waited = 0
+      while ($waited -lt $maxWait) {
+        $checksJson = gh pr checks $prNumber --json name,state,startedAt 2>$null
+        if ($checksJson -and $checksJson -ne "[]") {
+          break
+        }
+        Start-Sleep -Seconds 5
+        $waited += 5
+        Write-Host "Waiting for checks to start... ($waited`s)"
+      }
+
+      if (!$checksJson -or $checksJson -eq "[]") {
+        Write-Host "No CI checks configured for this PR"
+        exit 0
+      }
+
+      # Use gh pr checks --watch to wait for all checks to complete
+      Write-Host "Waiting for all checks to complete..."
+      $result = gh pr checks $prNumber --watch 2>&1
+
+      # Get final status
+      $finalChecks = gh pr checks $prNumber --json name,state,conclusion 2>$null
+      if ($finalChecks) {
+        $checks = $finalChecks | ConvertFrom-Json
+        $total = $checks.Count
+        $passed = ($checks | Where-Object { $_.conclusion -eq "SUCCESS" }).Count
+        $failed = ($checks | Where-Object { $_.conclusion -eq "FAILURE" }).Count
+        $other = $total - $passed - $failed
+
+        Write-Host ""
+        Write-Host "=== PR Check Results ==="
+        Write-Host "Total:  $total"
+        Write-Host "Passed: $passed"
+        Write-Host "Failed: $failed"
+
+        if ($other -gt 0) {
+          Write-Host "Other:  $other"
+        }
+
+        Write-Host ""
+        foreach ($check in $checks) {
+          $icon = if ($check.conclusion -eq "SUCCESS") { "pass" } elseif ($check.conclusion -eq "FAILURE") { "FAIL" } else { "?   " }
+          Write-Host "  [$icon] $($check.name)"
+        }
+        Write-Host ""
+
+        if ($failed -gt 0) {
+          Write-Host "CI checks failed. Review failures above and fix before merging."
+          exit 1
+        }
+
+        Write-Host "All CI checks passed!"
+      }
