@@ -273,9 +273,22 @@ func mergeMCPConfigJSON(path string, force bool) error {
 	return nil
 }
 
-// mergeRepoHooksJSON creates or merges sessionStart hook into .github/hooks/hooks.json
+// mergeRepoHooksJSON creates or merges hookflow hooks into .github/hooks/hooks.json
+// This is the primary hooks file that Copilot CLI reads from (.github/hooks/ in the repo).
 func mergeRepoHooksJSON(path string, force bool) error {
-	// Define sessionStart enforcement hook
+	// Define hookflow hooks
+	hookflowPreHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type preToolUse",
+		"powershell": "gh hookflow run --raw --event-type preToolUse",
+		"timeoutSec": 60,
+	}
+	hookflowPostHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type postToolUse",
+		"powershell": "gh hookflow run --raw --event-type postToolUse",
+		"timeoutSec": 60,
+	}
 	sessionStartHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
@@ -305,6 +318,22 @@ func mergeRepoHooksJSON(path string, force bool) error {
 		config["hooks"] = hooks
 	}
 
+	// Merge preToolUse hooks
+	preToolUse := getHookArray(hooks, "preToolUse")
+	if !containsHookflowHook(preToolUse) || force {
+		preToolUse = removeHookflowHooks(preToolUse)
+		preToolUse = append(preToolUse, hookflowPreHook)
+		hooks["preToolUse"] = preToolUse
+	}
+
+	// Merge postToolUse hooks
+	postToolUse := getHookArray(hooks, "postToolUse")
+	if !containsHookflowHook(postToolUse) || force {
+		postToolUse = removeHookflowHooks(postToolUse)
+		postToolUse = append(postToolUse, hookflowPostHook)
+		hooks["postToolUse"] = postToolUse
+	}
+
 	// Merge sessionStart hooks
 	sessionStart := getHookArray(hooks, "sessionStart")
 	if !containsHookflowHook(sessionStart) || force {
@@ -323,7 +352,7 @@ func mergeRepoHooksJSON(path string, force bool) error {
 		return fmt.Errorf("failed to write hooks.json: %w", err)
 	}
 
-	fmt.Printf("✓ Created %s (sessionStart enforcement)\n", path)
+	fmt.Printf("✓ Created %s (repo hooks: preToolUse, postToolUse, sessionStart)\n", path)
 	return nil
 }
 

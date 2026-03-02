@@ -1,5 +1,21 @@
 {
   "hooks": {
+    "postToolUse": [
+      {
+        "bash": "gh hookflow run --raw --event-type postToolUse",
+        "powershell": "gh hookflow run --raw --event-type postToolUse",
+        "timeoutSec": 60,
+        "type": "command"
+      }
+    ],
+    "preToolUse": [
+      {
+        "bash": "gh hookflow run --raw --event-type preToolUse",
+        "powershell": "gh hookflow run --raw --event-type preToolUse",
+        "timeoutSec": 60,
+        "type": "command"
+      }
+    ],
     "sessionStart": [
       {
         "bash": "gh hookflow check-setup || echo '{\"systemMessage\":\"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow \u0026\u0026 gh hookflow init\"}'",
