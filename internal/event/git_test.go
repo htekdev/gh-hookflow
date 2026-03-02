@@ -241,3 +241,55 @@ func TestMockGitProviderDefaults(t *testing.T) {
 		t.Error("GetStagedFiles should return nil")
 	}
 }
+
+// TestParseCount tests the parseCount helper function
+func TestParseCount(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    int
+		wantErr bool
+	}{
+		{"0", 0, false},
+		{"1", 1, false},
+		{"42", 42, false},
+		{"100", 100, false},
+		{"3", 3, false},
+	}
+
+	for _, tt := range tests {
+		got, err := parseCount(tt.input)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseCount(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("parseCount(%q) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+// TestRealGitProviderNonGitDir tests RealGitProvider in a non-git directory
+func TestRealGitProviderNonGitDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	provider := &RealGitProvider{}
+
+	// These methods should return empty/zero values gracefully in a non-git directory
+	if branch := provider.GetBranch(tmpDir); branch != "" {
+		t.Errorf("GetBranch in non-git dir = %q, want empty", branch)
+	}
+	if files := provider.GetStagedFiles(tmpDir); files != nil {
+		t.Errorf("GetStagedFiles in non-git dir = %v, want nil", files)
+	}
+	if files := provider.GetPendingFiles(tmpDir, "git add ."); files != nil {
+		t.Errorf("GetPendingFiles in non-git dir = %v, want nil", files)
+	}
+	ahead, behind := provider.GetAheadBehind(tmpDir)
+	if ahead != 0 || behind != 0 {
+		t.Errorf("GetAheadBehind in non-git dir = (%d, %d), want (0, 0)", ahead, behind)
+	}
+	// GetRemote defaults to "origin" on error
+	remote := provider.GetRemote(tmpDir)
+	if remote != "origin" {
+		t.Errorf("GetRemote in non-git dir = %q, want 'origin'", remote)
+	}
+}

@@ -76,7 +76,7 @@ steps:
     run: |
       echo "Multi-line"
       echo "Command"
-    shell: bash
+    shell: pwsh
 
   - name: Cleanup
     if: ${{ always() }}

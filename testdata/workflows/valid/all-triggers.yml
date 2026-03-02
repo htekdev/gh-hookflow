@@ -62,7 +62,7 @@ env:
 steps:
   - name: Log trigger
     run: echo "Triggered by event"
-    shell: bash
+    shell: pwsh
 
   - name: Conditional step
     if: ${{ event.hook.type == 'preToolUse' }}

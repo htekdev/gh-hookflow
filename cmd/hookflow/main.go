@@ -302,6 +302,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(triggersCmd)
 	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(gitPushCmd)
 
 	// discover flags
 	discoverCmd.Flags().StringP("dir", "d", "", "Directory to search (default: current directory)")
@@ -414,6 +415,15 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 // runMatchingWorkflowsWithEvent runs workflows with a pre-built event
 func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 	log := logging.Context("matcher")
+
+	// Block direct git push — must go through "hookflow git-push" instead
+	if evt.Push != nil && evt.GetLifecycle() == "pre" {
+		log.Info("blocking direct git push — use 'hookflow git-push' instead")
+		result := schema.NewDenyResult(
+			"Direct git push is blocked by hookflow. Use 'hookflow git-push <args>' instead to enable pre/post push workflow validation.\n\n" +
+				"Example: hookflow git-push origin main")
+		return outputWorkflowResult(result)
+	}
 
 	// Normalize file path to be relative to dir (for matching against workflow patterns)
 	if evt.File != nil && evt.File.Path != "" {
