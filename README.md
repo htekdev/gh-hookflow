@@ -1,6 +1,6 @@
 # gh-hookflow
 
-A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions.
+A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions. Enforce governance, quality gates, and safety checks in real-time.
 
 ## Overview
 

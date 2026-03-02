@@ -10,7 +10,8 @@ blocking: true
 steps:
   - name: Run tests with coverage
     run: |
-      go test ./... -coverprofile=coverage.out -covermode=atomic
+      $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
+      & $goCmd test ./... -coverprofile=coverage.out -covermode=atomic
       if ($LASTEXITCODE -ne 0) {
         Write-Error "Tests failed"
         exit 1
@@ -18,8 +19,9 @@ steps:
 
   - name: Check coverage threshold
     run: |
+      $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
       $threshold = 70
-      $output = go tool cover -func=coverage.out | Select-String "total:"
+      $output = & $goCmd tool cover -func=coverage.out | Select-String "total:"
       if ($output -match '(\d+\.?\d*)%') {
         $coverage = [double]$matches[1]
         Write-Host "Total coverage: $coverage%"
