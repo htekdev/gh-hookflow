@@ -2443,7 +2443,7 @@ blocking: true
 steps:
   - name: Validate JSON syntax
     if: ${{ event.file.path == 'config.json' }}
-    shell: bash
+    shell: pwsh
     run: |
       echo "Validating JSON syntax..."
       if ! cat config.json | jq . > /dev/null 2>&1; then

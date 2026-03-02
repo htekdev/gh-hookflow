@@ -602,7 +602,7 @@ steps:
       # exit 1 to deny/block
     env:                   # Step-specific env vars (optional)
       MY_VAR: value
-    shell: bash            # Shell: bash, sh, pwsh (optional)
+    shell: pwsh           # Shell: pwsh (default, cross-platform)
     timeout: 60            # Timeout in seconds (optional)
 ` + "```" + `
 

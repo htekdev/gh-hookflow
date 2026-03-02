@@ -30,7 +30,6 @@ on:
 steps:
   - name: Check
     run: echo "checking"
-    shell: cmd
 `
 	if err := os.WriteFile(filepath.Join(hookflowDir, "push.yml"), []byte(workflowContent), 0644); err != nil {
 		t.Fatal(err)
@@ -280,7 +279,6 @@ on:
 steps:
   - name: Check
     run: echo "checking"
-    shell: cmd
 `
 	if err := os.WriteFile(filepath.Join(hookflowDir, "file-only.yml"), []byte(workflowContent), 0644); err != nil {
 		t.Fatal(err)
@@ -322,7 +320,6 @@ on:
 steps:
   - name: Lint check
     run: echo "all good"
-    shell: cmd
 `
 	if err := os.WriteFile(filepath.Join(hookflowDir, "push-lint.yml"), []byte(workflowContent), 0644); err != nil {
 		t.Fatal(err)
@@ -373,7 +370,6 @@ on:
 steps:
   - name: Failing check
     run: exit 1
-    shell: cmd
 `
 	if err := os.WriteFile(filepath.Join(hookflowDir, "push-fail.yml"), []byte(workflowContent), 0644); err != nil {
 		t.Fatal(err)
