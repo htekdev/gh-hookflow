@@ -66,6 +66,9 @@ func TestIsGitPushCommand(t *testing.T) {
 		{"push in chain", "git commit -m 'msg' && git push", true},
 		{"push tag", "git push origin v1.0.0", true},
 		{"push with upstream", "git push -u origin main", true},
+		{"push after newline", "git commit -m 'msg'\ngit push", true},
+		{"push after newline with args", "git commit -m 'msg'\ngit push origin main", true},
+		{"push after multiple newlines", "git add .\ngit commit -m 'msg'\ngit push", true},
 
 		// Should NOT match
 		{"just git", "git status", false},
@@ -282,6 +285,66 @@ func TestDetector(t *testing.T) {
 		}
 		if evt.Push.Ref != "refs/heads/main" {
 			t.Errorf("Ref = %q, want %q", evt.Push.Ref, "refs/heads/main")
+		}
+	})
+
+	t.Run("chained commit + push newline detects both", func(t *testing.T) {
+		input := `{
+			"toolName": "powershell",
+			"toolArgs": {"command": "git commit -m 'test message'\ngit push origin main"},
+			"cwd": "/test/repo"
+		}`
+
+		evt, err := detector.DetectFromRawInput([]byte(input))
+		if err != nil {
+			t.Fatalf("DetectFromRawInput failed: %v", err)
+		}
+
+		if evt.Commit == nil {
+			t.Fatal("Expected commit event, got nil")
+		}
+		if evt.Push == nil {
+			t.Fatal("Expected push event, got nil — newline-separated push was not detected")
+		}
+	})
+
+	t.Run("chained commit + push && detects both", func(t *testing.T) {
+		input := `{
+			"toolName": "powershell",
+			"toolArgs": {"command": "git commit -m 'test' && git push"},
+			"cwd": "/test/repo"
+		}`
+
+		evt, err := detector.DetectFromRawInput([]byte(input))
+		if err != nil {
+			t.Fatalf("DetectFromRawInput failed: %v", err)
+		}
+
+		if evt.Commit == nil {
+			t.Fatal("Expected commit event, got nil")
+		}
+		if evt.Push == nil {
+			t.Fatal("Expected push event, got nil — &&-chained push was not detected")
+		}
+	})
+
+	t.Run("chained add + commit + push detects all", func(t *testing.T) {
+		input := `{
+			"toolName": "powershell",
+			"toolArgs": {"command": "git add .\ngit commit -m 'feat: new feature'\ngit push -u origin main"},
+			"cwd": "/test/repo"
+		}`
+
+		evt, err := detector.DetectFromRawInput([]byte(input))
+		if err != nil {
+			t.Fatalf("DetectFromRawInput failed: %v", err)
+		}
+
+		if evt.Commit == nil {
+			t.Fatal("Expected commit event, got nil")
+		}
+		if evt.Push == nil {
+			t.Fatal("Expected push event, got nil — multi-line chain was not detected")
 		}
 	})
 

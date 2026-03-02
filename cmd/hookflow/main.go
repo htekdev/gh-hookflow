@@ -404,7 +404,7 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 	// Set lifecycle from CLI flag
 	evt.Lifecycle = lifecycle
 
-	log.Debug("detected event: file=%v, tool=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, lifecycle)
+	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
 
 	// Discover and run matching workflows
 	err = runMatchingWorkflowsWithEvent(dir, evt)
@@ -800,8 +800,8 @@ func outputWorkflowResult(result *schema.WorkflowResult) error {
 // These patterns are designed to match git commands at the start of a command line
 // or after command separators (&&, ||, ;), but NOT inside quoted strings like echo "git commit"
 
-var gitCommitPattern = regexp.MustCompile(`(?:^|&&|\|\||;|&)\s*git\s+(commit|ci)\b`)
-var gitPushPattern = regexp.MustCompile(`(?:^|&&|\|\||;|&)\s*git\s+push\b`)
+var gitCommitPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;|&)\s*git\s+(commit|ci)\b`)
+var gitPushPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;|&)\s*git\s+push\b`)
 var commitMessagePattern = regexp.MustCompile(`-m\s+["']([^"']+)["']`)
 var tagPushPattern = regexp.MustCompile(`\bgit\s+push\s+\S+\s+(v[\d.]+)`)
 
