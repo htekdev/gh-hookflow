@@ -192,6 +192,59 @@ func TestWorkflow_IsBlocking_ExplicitFalse(t *testing.T) {
 }
 
 // ============================================================================
+// LoadAndValidateWorkflow Tests
+// ============================================================================
+
+func TestLoadAndValidateWorkflow_Valid(t *testing.T) {
+	workflow, err := LoadAndValidateWorkflow("../../testdata/workflows/valid/simple.yml")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if workflow == nil {
+		t.Fatal("Expected non-nil workflow")
+	}
+	if workflow.Name != "Lint JavaScript Files" {
+		t.Errorf("Expected name 'Lint JavaScript Files', got '%s'", workflow.Name)
+	}
+}
+
+func TestLoadAndValidateWorkflow_FileNotFound(t *testing.T) {
+	_, err := LoadAndValidateWorkflow("../../testdata/workflows/nonexistent.yml")
+	if err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+}
+
+func TestLoadAndValidateWorkflow_InvalidSchema(t *testing.T) {
+	_, err := LoadAndValidateWorkflow("../../testdata/workflows/invalid/missing-required.yml")
+	if err == nil {
+		t.Error("Expected error for invalid schema")
+	}
+}
+
+func TestLoadAndValidateWorkflow_BadSyntax(t *testing.T) {
+	_, err := LoadAndValidateWorkflow("../../testdata/workflows/invalid/bad-syntax.yml")
+	if err == nil {
+		t.Error("Expected error for bad YAML syntax")
+	}
+}
+
+func TestLoadAndValidateWorkflow_EmptyOn(t *testing.T) {
+	_, err := LoadAndValidateWorkflow("../../testdata/workflows/invalid/empty-on.yml")
+	if err == nil {
+		t.Error("Expected error for empty on config")
+	}
+}
+
+func TestLoadAndValidateWorkflow_ValidationFailNoErrors(t *testing.T) {
+	// Test with empty name - schema validates to invalid with errors
+	_, err := LoadAndValidateWorkflow("../../testdata/workflows/invalid/empty-name.yml")
+	if err == nil {
+		t.Error("Expected error for empty name")
+	}
+}
+
+// ============================================================================
 // Timeout Validation Tests
 // ============================================================================
 
@@ -705,6 +758,43 @@ func TestNewDenyResult_EmptyReason(t *testing.T) {
 	}
 	if result.PermissionDecisionReason != "" {
 		t.Errorf("Expected empty reason, got '%s'", result.PermissionDecisionReason)
+	}
+}
+
+// ============================================================================
+// Empty Trigger Tests - Push, Hooks, File
+// ============================================================================
+
+func TestLoadWorkflow_EmptyPushTrigger(t *testing.T) {
+	workflow, err := LoadWorkflow("../../testdata/workflows/valid/empty-push-trigger.yml")
+	if err != nil {
+		t.Fatalf("Failed to load workflow: %v", err)
+	}
+	if workflow.On.Push == nil {
+		t.Error("Expected push trigger to be non-nil for bare 'push:' syntax")
+	}
+	if workflow.On.Commit != nil {
+		t.Error("Expected commit trigger to be nil")
+	}
+}
+
+func TestLoadWorkflow_EmptyHooksTrigger(t *testing.T) {
+	workflow, err := LoadWorkflow("../../testdata/workflows/valid/empty-hooks-trigger.yml")
+	if err != nil {
+		t.Fatalf("Failed to load workflow: %v", err)
+	}
+	if workflow.On.Hooks == nil {
+		t.Error("Expected hooks trigger to be non-nil for bare 'hooks:' syntax")
+	}
+}
+
+func TestLoadWorkflow_EmptyFileTrigger(t *testing.T) {
+	workflow, err := LoadWorkflow("../../testdata/workflows/valid/empty-file-trigger.yml")
+	if err != nil {
+		t.Fatalf("Failed to load workflow: %v", err)
+	}
+	if workflow.On.File == nil {
+		t.Error("Expected file trigger to be non-nil for bare 'file:' syntax")
 	}
 }
 

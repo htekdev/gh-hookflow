@@ -24,7 +24,12 @@ func sessionsDir() (string, error) {
 
 // GetSessionDir returns the session directory for the current Copilot session.
 // Returns ~/.hookflow/sessions/{copilot-pid}/
+// If HOOKFLOW_SESSION_DIR is set, uses that directly (for testing).
 func GetSessionDir() (string, error) {
+	if dir := os.Getenv("HOOKFLOW_SESSION_DIR"); dir != "" {
+		return dir, nil
+	}
+
 	pid, err := GetCopilotPID()
 	if err != nil {
 		return "", err

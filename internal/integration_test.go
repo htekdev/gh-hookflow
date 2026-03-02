@@ -12,6 +12,18 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/trigger"
 )
 
+// TestMain sets up isolated session state for all integration tests
+func TestMain(m *testing.M) {
+	// Create a temp dir for session state so tests don't interfere with real sessions
+	tmpDir, err := os.MkdirTemp("", "hookflow-integration-test-*")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir)
+	os.Setenv("HOOKFLOW_SESSION_DIR", tmpDir)
+	os.Exit(m.Run())
+}
+
 // TestIntegrationHookEventTriggersWorkflowSuccess tests a hook event triggering a workflow with successful steps
 func TestIntegrationHookEventTriggersWorkflowSuccess(t *testing.T) {
 	// Create a simple workflow with hook trigger and successful step

@@ -1,9 +1,12 @@
+
 name: Test Coverage Enforcement
 description: Ensures code changes maintain minimum test coverage before commit
+
 
 on:
   commit:
     lifecycle: pre
+  
 
 blocking: true
 
@@ -11,7 +14,7 @@ steps:
   - name: Run tests with coverage
     run: |
       $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
-      & $goCmd test ./... -coverprofile=coverage.out -covermode=atomic
+      & $goCmd test ./... -coverprofile coverage.out -covermode atomic
       if ($LASTEXITCODE -ne 0) {
         Write-Error "Tests failed"
         exit 1
@@ -21,7 +24,7 @@ steps:
     run: |
       $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
       $threshold = 70
-      $output = & $goCmd tool cover -func=coverage.out | Select-String "total:"
+      $output = & $goCmd tool cover -func coverage.out | Select-String "total:"
       if ($output -match '(\d+\.?\d*)%') {
         $coverage = [double]$matches[1]
         Write-Host "Total coverage: $coverage%"
