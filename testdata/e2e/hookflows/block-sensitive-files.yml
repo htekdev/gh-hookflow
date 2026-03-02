@@ -1,5 +1,5 @@
 # E2E Test: Block sensitive file operations
-# This workflow blocks creation/editing of sensitive files like .env, .key, .pem
+# Blocks creation/editing of sensitive files like .env, .key, .pem
 
 name: Block Sensitive Files
 description: Blocks create/edit of sensitive files (.env, .key, .pem, .secret)
