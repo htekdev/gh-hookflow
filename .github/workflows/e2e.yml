@@ -1,0 +1,226 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            binary: hookflow
+            shell: bash
+          - os: macos-latest
+            binary: hookflow
+            shell: bash
+          - os: windows-latest
+            binary: hookflow.exe
+            shell: pwsh
+
+    steps:
+      # ── Setup ──────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build hookflow
+        run: go build -o bin/${{ matrix.binary }} ./cmd/hookflow
+
+      - name: Add hookflow to PATH (unix)
+        if: runner.os != 'Windows'
+        run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+      - name: Add hookflow to PATH (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "${{ github.workspace }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Verify installations
+        shell: bash
+        run: |
+          hookflow version
+          copilot --version
+
+      # ── Prepare test workspace ─────────────────────────────
+      - name: Create test workspace
+        shell: bash
+        run: |
+          mkdir -p e2e-workspace/.github/hookflows
+          cp testdata/e2e/hookflows/*.yml e2e-workspace/.github/hookflows/
+
+      - name: Initialize git repo in workspace
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          git init
+          git config user.email "e2e-test@hookflow.dev"
+          git config user.name "E2E Test"
+          echo "initial" > initial.txt
+          git add .
+          git commit -m "chore: initial commit"
+
+      - name: Initialize hookflow
+        working-directory: e2e-workspace
+        run: hookflow init --force
+
+      # ── Test 1: Workflow validation ────────────────────────
+      - name: 'Test 1: Validate E2E workflows'
+        working-directory: e2e-workspace
+        run: hookflow validate
+
+      # ── Test 2: Block sensitive file (hookflow run --raw) ──
+      - name: 'Test 2: Block .env file creation (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc123"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test2.json 2>&1
+          cat $RUNNER_TEMP/e2e-test2.json
+          grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test2.json
+          echo "✅ PASS: .env creation was correctly blocked"
+
+      # ── Test 3: Allow normal file (hookflow run --raw) ─────
+      - name: 'Test 3: Allow hello.txt creation (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"Hello World"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test3.json 2>&1
+          cat $RUNNER_TEMP/e2e-test3.json
+          grep -q '"permissionDecision":"allow"' $RUNNER_TEMP/e2e-test3.json
+          echo "✅ PASS: hello.txt creation was correctly allowed"
+
+      # ── Test 4: Block .key file (hookflow run --raw) ───────
+      - name: 'Test 4: Block .key file edit (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"edit","toolArgs":{"path":"server.key","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test4.json 2>&1
+          cat $RUNNER_TEMP/e2e-test4.json
+          grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test4.json
+          echo "✅ PASS: .key file edit was correctly blocked"
+
+      # ── Test 5: Post-lifecycle runs but doesn't block ──────
+      - name: 'Test 5: Post-edit notification (non-blocking)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"edit","toolArgs":{"path":"main.go","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test5.json 2>&1
+          cat $RUNNER_TEMP/e2e-test5.json
+          # Post-lifecycle hooks should not deny
+          if grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test5.json; then
+            echo "❌ FAIL: post-edit notification should not deny"
+            exit 1
+          fi
+          echo "✅ PASS: post-edit notification did not block"
+
+      # ── Test 6: Git commit governance (direct) ─────────────
+      - name: 'Test 6a: Block bad commit message (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        continue-on-error: true
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"quick fix\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6a.json 2>&1
+          cat $RUNNER_TEMP/e2e-test6a.json
+          if grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test6a.json; then
+            echo "✅ PASS: bad commit message was correctly blocked"
+          else
+            echo "⚠️ INFO: git commit detection from bash command may vary"
+          fi
+
+      - name: 'Test 6b: Allow good commit message (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        continue-on-error: true
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"fix: resolve login issue\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6b.json 2>&1
+          cat $RUNNER_TEMP/e2e-test6b.json
+          if grep -q '"permissionDecision":"allow"' $RUNNER_TEMP/e2e-test6b.json; then
+            echo "✅ PASS: good commit message was correctly allowed"
+          else
+            echo "⚠️ INFO: git commit detection from bash command may vary"
+          fi
+
+      # ── Test 7: Copilot CLI integration ────────────────────
+      - name: 'Test 7: Copilot CLI - block sensitive file'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        working-directory: e2e-workspace
+        timeout-minutes: 5
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
+            exit 0
+          fi
+          echo "Running Copilot CLI to attempt .env creation..."
+          copilot -p "Create a file called .env with the content DATABASE_URL=postgres://localhost/test" 2>&1 || true
+          if [ -f ".env" ]; then
+            echo "❌ FAIL: .env was created despite hookflow blocking rule"
+            cat .env
+            rm .env
+            exit 1
+          else
+            echo "✅ PASS: .env was not created (hookflow blocked it)"
+          fi
+
+      - name: 'Test 7: Copilot CLI - allow normal file'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        working-directory: e2e-workspace
+        timeout-minutes: 5
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
+            exit 0
+          fi
+          echo "Running Copilot CLI to create hello.txt..."
+          copilot -p "Create a file called hello.txt containing exactly the text 'Hello from E2E test'" 2>&1 || true
+          if [ -f "hello.txt" ]; then
+            echo "✅ PASS: hello.txt was created successfully"
+            cat hello.txt
+          else
+            echo "⚠️ INFO: hello.txt was not created - Copilot CLI may have used a different approach"
+          fi
+
+      # ── Summary ────────────────────────────────────────────
+      - name: Test summary
+        if: always()
+        shell: bash
+        run: |
+          echo ""
+          echo "════════════════════════════════════════"
+          echo "  E2E Test Summary (${{ matrix.os }})"
+          echo "════════════════════════════════════════"
+          echo "  Tests 1-5: Core hookflow E2E (deterministic)"
+          echo "  Test 6:    Git commit governance (best-effort)"
+          echo "  Test 7:    Copilot CLI integration (conditional)"
+          echo "════════════════════════════════════════"

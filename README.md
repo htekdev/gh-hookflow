@@ -343,6 +343,31 @@ go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
 
+### E2E Testing
+
+The project includes end-to-end tests that validate hookflow against real Copilot CLI integration across platforms (Ubuntu, macOS, Windows).
+
+**Test scenarios:**
+1. **Workflow validation** — `hookflow validate` on test workflows
+2. **Block sensitive files** — `.env`, `.key`, `.pem` creation/edits are denied
+3. **Allow normal files** — Non-sensitive file operations are permitted
+4. **Post-lifecycle hooks** — Post-edit notifications run without blocking
+5. **Git commit governance** — Conventional commit message format enforcement
+6. **Copilot CLI integration** — Real `copilot -p` programmatic mode tests (requires `COPILOT_GITHUB_TOKEN` secret)
+
+**Running locally with `hookflow run --raw`:**
+```bash
+# Block test — should return permissionDecision: deny
+echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=x"},"cwd":"'$(pwd)'"}' \
+  | hookflow run --raw --event-type preToolUse
+
+# Allow test — should return permissionDecision: allow
+echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"Hello"},"cwd":"'$(pwd)'"}' \
+  | hookflow run --raw --event-type preToolUse
+```
+
+**CI setup:** The E2E workflow (`.github/workflows/e2e.yml`) requires a `COPILOT_GITHUB_TOKEN` repository secret (fine-grained PAT with Copilot Requests permission) for the Copilot CLI integration tests. The direct `hookflow run --raw` tests run without any secrets.
+
 ## Related Projects
 
 - [GitHub Copilot CLI](https://github.com/github/gh-copilot) — The AI coding assistant this extends
