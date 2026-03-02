@@ -66,7 +66,17 @@ Examples:
   hookflow git-push origin feature/my-branch --force
   hookflow git-push                          # uses default remote and branch`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dir, _ := cmd.Flags().GetString("dir")
+		// Manually extract --dir/-d flag since we disable flag parsing
+		dir := ""
+		var gitArgs []string
+		for i := 0; i < len(args); i++ {
+			if (args[i] == "--dir" || args[i] == "-d") && i+1 < len(args) {
+				dir = args[i+1]
+				i++ // skip value
+			} else {
+				gitArgs = append(gitArgs, args[i])
+			}
+		}
 		if dir == "" {
 			var err error
 			dir, err = os.Getwd()
@@ -75,13 +85,12 @@ Examples:
 			}
 		}
 
-		return runGitPush(dir, args)
+		return runGitPush(dir, gitArgs)
 	},
 }
 
 func init() {
-	gitPushCmd.Flags().StringP("dir", "d", "", "Working directory (default: current directory)")
-	gitPushCmd.Flags().SetInterspersed(false) // Pass all flags after git-push to git
+	gitPushCmd.DisableFlagParsing = true
 }
 
 func runGitPush(dir string, gitArgs []string) error {
