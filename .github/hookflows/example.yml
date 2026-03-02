@@ -1,0 +1,25 @@
+# Example hookflow workflow
+# Learn more: https://github.com/htekdev/gh-hookflow
+
+name: Example Workflow
+description: An example workflow that demonstrates hookflow features
+
+# This workflow is disabled by default - rename or modify to enable
+on:
+  file:
+    paths:
+      - '**/.env'
+      - '**/.env.*'
+    types:
+      - edit
+      - create
+
+blocking: true
+
+steps:
+  - name: Block sensitive file edits
+    run: |
+      echo "⚠️ Editing environment files requires review"
+      echo "File: ${{ event.file.path }}"
+      # Uncomment the next line to actually block:
+      # exit 1

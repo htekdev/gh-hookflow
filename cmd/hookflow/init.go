@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,20 +11,24 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize hookflow for a repository",
-	Long: `Creates the necessary directory structure and hook configuration
-for hookflow in the current repository.
+	Short: "Initialize hookflow globally or for a repository",
+	Long: `Initializes hookflow configuration.
 
-This command creates:
-- .github/hookflows/ directory for your workflow files
-- .github/hooks/hooks.json to integrate with Copilot CLI hooks
-- .github/skills/hookflow/SKILL.md for AI agent guidance
+By default (global setup), creates:
+- ~/.copilot/hooks.json - Global hooks for preToolUse/postToolUse
+- ~/.copilot/mcp-config.json - MCP server registration
+- ~/.copilot/skills/hookflow/SKILL.md - AI agent guidance
+
+With --repo flag (per-repo setup), also creates:
+- .github/hookflows/example.yml - Example workflow
+- .github/hooks/hooks.json - sessionStart enforcement hook
 
 After running init, you can create workflows using 'hookflow create'
 or by manually creating YAML files in .github/hookflows/`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir, _ := cmd.Flags().GetString("dir")
 		force, _ := cmd.Flags().GetBool("force")
+		repo, _ := cmd.Flags().GetBool("repo")
 
 		if dir == "" {
 			var err error
@@ -33,7 +38,7 @@ or by manually creating YAML files in .github/hookflows/`,
 			}
 		}
 
-		return runInit(dir, force)
+		return runInit(dir, force, repo)
 	},
 }
 
@@ -41,105 +46,372 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringP("dir", "d", "", "Directory to initialize (default: current directory)")
 	initCmd.Flags().BoolP("force", "f", false, "Overwrite existing configuration")
+	initCmd.Flags().BoolP("repo", "r", false, "Also create per-repo configuration")
 }
 
-func runInit(dir string, force bool) error {
-	fmt.Printf("Initializing hookflow in %s\n", dir)
+func runInit(dir string, force bool, repo bool) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
 
-	// Create .github/hookflows directory for workflow files
+	copilotDir := filepath.Join(homeDir, ".copilot")
+
+	// Always do global setup first
+	if err := runGlobalInit(copilotDir, force); err != nil {
+		return err
+	}
+
+	// If --repo flag, also do per-repo setup
+	if repo {
+		fmt.Println() // Blank line between sections
+		if err := runRepoInit(dir, force); err != nil {
+			return err
+		}
+	}
+
+	// Print completion message
+	fmt.Println("\n✓ hookflow initialized successfully!")
+	if !repo {
+		fmt.Println("\nRun 'hookflow init --repo' in a repository to add per-repo workflows.")
+	} else {
+		fmt.Println("\nNext steps:")
+		fmt.Println("  1. Create a workflow: hookflow create \"block edits to .env files\"")
+		fmt.Println("  2. Or edit the example workflow in .github/hookflows/example.yml")
+		fmt.Println("  3. Commit the .github/ directory to enable for your team")
+	}
+
+	return nil
+}
+
+// runGlobalInit creates global configuration in ~/.copilot/
+func runGlobalInit(copilotDir string, force bool) error {
+	fmt.Println("Setting up global hookflow configuration...")
+
+	// Ensure ~/.copilot/ exists
+	if err := os.MkdirAll(copilotDir, 0755); err != nil {
+		return fmt.Errorf("failed to create ~/.copilot directory: %w", err)
+	}
+
+	// 1. Create/merge ~/.copilot/hooks.json
+	hooksFile := filepath.Join(copilotDir, "hooks.json")
+	if err := mergeGlobalHooksJSON(hooksFile, force); err != nil {
+		return err
+	}
+
+	// 2. Create/merge ~/.copilot/mcp-config.json
+	mcpFile := filepath.Join(copilotDir, "mcp-config.json")
+	if err := mergeMCPConfigJSON(mcpFile, force); err != nil {
+		return err
+	}
+
+	// 3. Create ~/.copilot/skills/hookflow/SKILL.md
+	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		return fmt.Errorf("failed to create skill directory: %w", err)
+	}
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	if _, err := os.Stat(skillFile); err == nil && !force {
+		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", skillFile)
+	} else {
+		if err := os.WriteFile(skillFile, []byte(generateSkillMD()), 0644); err != nil {
+			return fmt.Errorf("failed to create SKILL.md: %w", err)
+		}
+		fmt.Printf("✓ Created %s\n", skillFile)
+	}
+
+	return nil
+}
+
+// runRepoInit creates per-repo configuration in .github/
+func runRepoInit(dir string, force bool) error {
+	fmt.Printf("Setting up per-repo configuration in %s...\n", dir)
+
+	// 1. Create .github/hookflows directory and example workflow
 	hookflowsDir := filepath.Join(dir, ".github", "hookflows")
 	if err := os.MkdirAll(hookflowsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create hookflows directory: %w", err)
 	}
-	fmt.Printf("✓ Created %s\n", hookflowsDir)
 
-	// Create .github/hooks directory for Copilot CLI hooks.json
+	exampleWorkflow := filepath.Join(hookflowsDir, "example.yml")
+	if _, err := os.Stat(exampleWorkflow); os.IsNotExist(err) || force {
+		if err := os.WriteFile(exampleWorkflow, []byte(generateExampleWorkflow()), 0644); err != nil {
+			return fmt.Errorf("failed to create example workflow: %w", err)
+		}
+		fmt.Printf("✓ Created %s\n", exampleWorkflow)
+	} else {
+		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", exampleWorkflow)
+	}
+
+	// 2. Create .github/hooks/hooks.json with sessionStart enforcement
 	hooksDir := filepath.Join(dir, ".github", "hooks")
 	if err := os.MkdirAll(hooksDir, 0755); err != nil {
 		return fmt.Errorf("failed to create hooks directory: %w", err)
 	}
 
-	// Create hooks.json in .github/hooks/ (the standard Copilot CLI location)
 	hooksFile := filepath.Join(hooksDir, "hooks.json")
-	if _, err := os.Stat(hooksFile); err == nil && !force {
-		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", hooksFile)
-	} else {
-		hooksContent := generateHooksJSON()
-		if err := os.WriteFile(hooksFile, []byte(hooksContent), 0644); err != nil {
-			return fmt.Errorf("failed to create hooks.json: %w", err)
-		}
-		fmt.Printf("✓ Created %s\n", hooksFile)
+	if err := mergeRepoHooksJSON(hooksFile, force); err != nil {
+		return err
 	}
-
-	// Create example workflow in .github/hookflows/
-	exampleWorkflow := filepath.Join(hookflowsDir, "example.yml")
-	if _, err := os.Stat(exampleWorkflow); os.IsNotExist(err) {
-		exampleContent := generateExampleWorkflow()
-		if err := os.WriteFile(exampleWorkflow, []byte(exampleContent), 0644); err != nil {
-			fmt.Printf("⚠ Could not create example workflow: %v\n", err)
-		} else {
-			fmt.Printf("✓ Created %s\n", exampleWorkflow)
-		}
-	}
-
-	// Create skill directory and SKILL.md
-	skillDir := filepath.Join(dir, ".github", "skills", "hookflow")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		fmt.Printf("⚠ Could not create skill directory: %v\n", err)
-	} else {
-		skillFile := filepath.Join(skillDir, "SKILL.md")
-		if _, err := os.Stat(skillFile); err == nil && !force {
-			fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", skillFile)
-		} else {
-			skillContent := generateSkillMD()
-			if err := os.WriteFile(skillFile, []byte(skillContent), 0644); err != nil {
-				fmt.Printf("⚠ Could not create SKILL.md: %v\n", err)
-			} else {
-				fmt.Printf("✓ Created %s\n", skillFile)
-			}
-		}
-	}
-
-	fmt.Println("\n✓ hookflow initialized successfully!")
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Create a workflow: hookflow create \"block edits to .env files\"")
-	fmt.Println("  2. Or edit the example workflow in .github/hookflows/example.yml")
-	fmt.Println("  3. Commit the .github/ directory to enable for your team")
-	fmt.Println("\nNote: Team members need hookflow installed. They can run:")
-	fmt.Println("  gh extension install htekdev/gh-hookflow")
 
 	return nil
 }
 
-// generateHooksJSON creates the hooks.json that integrates with Copilot CLI
-// This goes in .github/hooks/hooks.json per Copilot CLI documentation
-func generateHooksJSON() string {
-	// Direct call to gh hookflow - requires gh extension to be installed
-	return `{
-  "version": 1,
-  "hooks": {
-    "preToolUse": [
-      {
-        "type": "command",
-        "bash": "gh hookflow run --raw --event-type preToolUse --dir \"$PWD\"",
-        "powershell": "gh hookflow run --raw --event-type preToolUse --dir (Get-Location)",
-        "timeoutSec": 60
-      }
-    ],
-    "postToolUse": [
-      {
-        "type": "command",
-        "bash": "gh hookflow run --raw --event-type postToolUse --dir \"$PWD\"",
-        "powershell": "gh hookflow run --raw --event-type postToolUse --dir (Get-Location)",
-        "timeoutSec": 60
-      }
-    ]
-  }
-}
-`
+// mergeGlobalHooksJSON creates or merges hookflow entries into ~/.copilot/hooks.json
+func mergeGlobalHooksJSON(path string, force bool) error {
+	// Define hookflow hooks
+	hookflowPreHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type preToolUse",
+		"powershell": "gh hookflow run --raw --event-type preToolUse",
+		"timeoutSec": 60,
+	}
+	hookflowPostHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type postToolUse",
+		"powershell": "gh hookflow run --raw --event-type postToolUse",
+		"timeoutSec": 60,
+	}
+
+	// Load existing config or create new one
+	config := map[string]interface{}{
+		"version": 1,
+		"hooks":   map[string]interface{}{},
+	}
+
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			// If file exists but is invalid JSON, backup and start fresh
+			_ = os.Rename(path, path+".bak")
+			fmt.Printf("⚠ Backed up invalid %s to %s.bak\n", path, path)
+		}
+	}
+
+	// Ensure hooks map exists
+	hooks, ok := config["hooks"].(map[string]interface{})
+	if !ok {
+		hooks = map[string]interface{}{}
+		config["hooks"] = hooks
+	}
+
+	// Merge preToolUse hooks
+	preToolUse := getHookArray(hooks, "preToolUse")
+	if !containsHookflowHook(preToolUse) || force {
+		preToolUse = removeHookflowHooks(preToolUse)
+		preToolUse = append(preToolUse, hookflowPreHook)
+		hooks["preToolUse"] = preToolUse
+	}
+
+	// Merge postToolUse hooks
+	postToolUse := getHookArray(hooks, "postToolUse")
+	if !containsHookflowHook(postToolUse) || force {
+		postToolUse = removeHookflowHooks(postToolUse)
+		postToolUse = append(postToolUse, hookflowPostHook)
+		hooks["postToolUse"] = postToolUse
+	}
+
+	// Write merged config
+	jsonBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal hooks.json: %w", err)
+	}
+
+	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write hooks.json: %w", err)
+	}
+
+	fmt.Printf("✓ Created %s (global hooks)\n", path)
+	return nil
 }
 
-// generateExampleWorkflow creates an example workflow file
+// mergeMCPConfigJSON creates or merges hookflow MCP server into ~/.copilot/mcp-config.json
+func mergeMCPConfigJSON(path string, force bool) error {
+	// Define hookflow MCP server (uses gh extension)
+	hookflowMCP := map[string]interface{}{
+		"type":    "stdio",
+		"command": "gh",
+		"args":    []string{"hookflow", "mcp", "serve"},
+		"tools":   []string{"*"},
+	}
+
+	// Load existing config or create new one
+	config := map[string]interface{}{
+		"mcpServers": map[string]interface{}{},
+	}
+
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			// If file exists but is invalid JSON, backup and start fresh
+			_ = os.Rename(path, path+".bak")
+			fmt.Printf("⚠ Backed up invalid %s to %s.bak\n", path, path)
+		}
+	}
+
+	// Ensure mcpServers map exists
+	mcpServers, ok := config["mcpServers"].(map[string]interface{})
+	if !ok {
+		mcpServers = map[string]interface{}{}
+		config["mcpServers"] = mcpServers
+	}
+
+	// Add/update hookflow MCP server
+	if _, exists := mcpServers["hookflow"]; !exists || force {
+		mcpServers["hookflow"] = hookflowMCP
+	}
+
+	// Write merged config
+	jsonBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal mcp-config.json: %w", err)
+	}
+
+	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write mcp-config.json: %w", err)
+	}
+
+	fmt.Printf("✓ Created %s (MCP server)\n", path)
+	return nil
+}
+
+// mergeRepoHooksJSON creates or merges hookflow hooks into .github/hooks/hooks.json
+// This is the primary hooks file that Copilot CLI reads from (.github/hooks/ in the repo).
+func mergeRepoHooksJSON(path string, force bool) error {
+	// Define hookflow hooks
+	hookflowPreHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type preToolUse",
+		"powershell": "gh hookflow run --raw --event-type preToolUse",
+		"timeoutSec": 60,
+	}
+	hookflowPostHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       "gh hookflow run --raw --event-type postToolUse",
+		"powershell": "gh hookflow run --raw --event-type postToolUse",
+		"timeoutSec": 60,
+	}
+	sessionStartHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
+		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
+		"timeoutSec": 10,
+		"comment":    "Ensure gh hookflow extension is installed and configured",
+	}
+
+	// Load existing config or create new one
+	config := map[string]interface{}{
+		"version": 1,
+		"hooks":   map[string]interface{}{},
+	}
+
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			// If file exists but is invalid JSON, backup and start fresh
+			_ = os.Rename(path, path+".bak")
+			fmt.Printf("⚠ Backed up invalid %s to %s.bak\n", path, path)
+		}
+	}
+
+	// Ensure hooks map exists
+	hooks, ok := config["hooks"].(map[string]interface{})
+	if !ok {
+		hooks = map[string]interface{}{}
+		config["hooks"] = hooks
+	}
+
+	// Merge preToolUse hooks
+	preToolUse := getHookArray(hooks, "preToolUse")
+	if !containsHookflowHook(preToolUse) || force {
+		preToolUse = removeHookflowHooks(preToolUse)
+		preToolUse = append(preToolUse, hookflowPreHook)
+		hooks["preToolUse"] = preToolUse
+	}
+
+	// Merge postToolUse hooks
+	postToolUse := getHookArray(hooks, "postToolUse")
+	if !containsHookflowHook(postToolUse) || force {
+		postToolUse = removeHookflowHooks(postToolUse)
+		postToolUse = append(postToolUse, hookflowPostHook)
+		hooks["postToolUse"] = postToolUse
+	}
+
+	// Merge sessionStart hooks
+	sessionStart := getHookArray(hooks, "sessionStart")
+	if !containsHookflowHook(sessionStart) || force {
+		sessionStart = removeHookflowHooks(sessionStart)
+		sessionStart = append(sessionStart, sessionStartHook)
+		hooks["sessionStart"] = sessionStart
+	}
+
+	// Write merged config
+	jsonBytes, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal hooks.json: %w", err)
+	}
+
+	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write hooks.json: %w", err)
+	}
+
+	fmt.Printf("✓ Created %s (repo hooks: preToolUse, postToolUse, sessionStart)\n", path)
+	return nil
+}
+
+// getHookArray safely extracts a hook array from the hooks map
+func getHookArray(hooks map[string]interface{}, key string) []interface{} {
+	if arr, ok := hooks[key].([]interface{}); ok {
+		return arr
+	}
+	return []interface{}{}
+}
+
+// containsHookflowHook checks if any hook in the array references hookflow
+func containsHookflowHook(hooks []interface{}) bool {
+	for _, h := range hooks {
+		hookBytes, err := json.Marshal(h)
+		if err != nil {
+			continue
+		}
+		hookStr := string(hookBytes)
+		if contains(hookStr, "hookflow") {
+			return true
+		}
+	}
+	return false
+}
+
+// removeHookflowHooks removes any existing hookflow hooks from the array
+func removeHookflowHooks(hooks []interface{}) []interface{} {
+	var result []interface{}
+	for _, h := range hooks {
+		hookBytes, err := json.Marshal(h)
+		if err != nil {
+			result = append(result, h)
+			continue
+		}
+		hookStr := string(hookBytes)
+		if !contains(hookStr, "hookflow") {
+			result = append(result, h)
+		}
+	}
+	return result
+}
+
+// contains is a simple substring check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// generateExampleWorkflowcreates an example workflow file
 func generateExampleWorkflow() string {
 	return `# Example hookflow workflow
 # Learn more: https://github.com/htekdev/gh-hookflow
@@ -442,18 +714,18 @@ steps:
 
 ### Validation Errors
 
-Run ` + "`hookflow validate`" + ` to check workflow syntax:
+Run ` + "`gh hookflow validate`" + ` to check workflow syntax:
 
 ` + "```bash" + `
-hookflow validate --file .github/hookflows/my-workflow.yml
+gh hookflow validate --file .github/hookflows/my-workflow.yml
 ` + "```" + `
 
 ### Testing Workflows
 
-Use ` + "`hookflow test`" + ` to simulate events:
+Use ` + "`gh hookflow test`" + ` to simulate events:
 
 ` + "```bash" + `
-hookflow test --workflow my-workflow --event file --path "test.env"
+gh hookflow test --workflow my-workflow --event file --path "test.env"
 ` + "```" + `
 `
 }

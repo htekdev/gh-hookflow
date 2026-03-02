@@ -8,6 +8,7 @@ dist/
 *.dylib
 
 # Test coverage
+coverage
 coverage.out
 coverage.html
 

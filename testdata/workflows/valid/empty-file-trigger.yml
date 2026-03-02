@@ -1,0 +1,9 @@
+name: Empty File Trigger Test
+description: Tests that empty file trigger matches all file changes
+
+on:
+  file:
+
+steps:
+  - name: Always Run
+    run: echo "This should run on any file change"

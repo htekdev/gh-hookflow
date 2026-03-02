@@ -1,0 +1,9 @@
+name: Empty Hooks Trigger Test
+description: Tests that empty hooks trigger matches all hooks
+
+on:
+  hooks:
+
+steps:
+  - name: Always Run
+    run: echo "This should run on any hook"

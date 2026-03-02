@@ -1,0 +1,9 @@
+name: Empty Push Trigger Test
+description: Tests that empty push trigger matches all pushes
+
+on:
+  push:
+
+steps:
+  - name: Always Run
+    run: echo "This should run on any push"

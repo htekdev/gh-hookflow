@@ -1,6 +1,6 @@
-# gh-hookflow
+# gh-hookflow 🔒
 
-A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions.
+A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions. Enforce governance, quality gates, and safety checks in real-time.
 
 ## Overview
 
@@ -18,53 +18,11 @@ A GitHub CLI extension that runs local workflows triggered by GitHub Copilot age
 
 ## Installation
 
-### GitHub CLI Extension (Recommended)
-
 ```bash
 gh extension install htekdev/gh-hookflow
 ```
 
 This installs gh-hookflow as `gh hookflow` and integrates directly with Copilot CLI hooks.
-
-### Alternative Installation Methods
-
-<details>
-<summary>npm</summary>
-
-```bash
-npm install -g hookflow
-```
-</details>
-
-<details>
-<summary>Go</summary>
-
-```bash
-go install github.com/htekdev/gh-hookflow/cmd/hookflow@latest
-```
-</details>
-
-<details>
-<summary>Install Script (Unix)</summary>
-
-```bash
-curl -sSL https://raw.githubusercontent.com/htekdev/gh-hookflow/main/scripts/install.sh | sh
-```
-</details>
-
-<details>
-<summary>Install Script (Windows)</summary>
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/htekdev/gh-hookflow/main/scripts/install.ps1 | iex
-```
-</details>
-
-<details>
-<summary>Download Binary</summary>
-
-Download pre-built binaries from the [Releases](https://github.com/htekdev/gh-hookflow/releases) page.
-</details>
 
 ## Quick Start
 
@@ -131,7 +89,7 @@ git commit -m "Add gh-hookflow workflows"
 git push
 ```
 
-Team members with gh-hookflow installed will automatically run your workflows during their Copilot sessions.
+Team members can install with `gh extension install htekdev/gh-hookflow` to automatically run your workflows during their Copilot sessions.
 
 ## Commands
 
@@ -375,7 +333,7 @@ Logs are stored in `~/.hookflow/logs/` with 7-day retention.
 
 ```bash
 # Build
-go build -o bin/hookflow ./cmd/hookflow
+go build -o bin/gh-hookflow ./cmd/hookflow
 
 # Test
 go test ./... -v

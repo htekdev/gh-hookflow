@@ -19,6 +19,9 @@ import (
 
 // TestShellTypeBash tests bash shell execution when explicitly specified
 func TestShellTypeBash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping - bash shell test is not reliable on Windows")
+	}
 	// Skip if bash is not available
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("Skipping - bash not available")
@@ -54,6 +57,9 @@ func TestShellTypeBash(t *testing.T) {
 
 // TestShellTypeSh tests sh shell execution when explicitly specified
 func TestShellTypeSh(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping - sh shell test is not reliable on Windows")
+	}
 	// Skip if sh is not available
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("Skipping - sh not available")

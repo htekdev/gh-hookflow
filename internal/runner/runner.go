@@ -12,6 +12,7 @@ import (
 
 	"github.com/htekdev/gh-hookflow/internal/expression"
 	"github.com/htekdev/gh-hookflow/internal/schema"
+	"github.com/htekdev/gh-hookflow/internal/session"
 )
 
 // Runner executes workflow steps
@@ -185,6 +186,17 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 // If blocking=true and any step fails, returns a deny result with detailed logs
 // If blocking=false, returns an allow result even if steps fail (logs warnings instead)
 func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
+	// Check for unacknowledged errors from previous postToolUse operations
+	// If this is a preToolUse event and there's an existing error, deny immediately
+	if r.event != nil && r.event.Hook != nil && r.event.Hook.Type == "preToolUse" {
+		hasErr, err := session.HasError()
+		if err != nil {
+			log.Printf("Warning: failed to check session error state: %v", err)
+		} else if hasErr {
+			return schema.NewDenyResult("A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing.")
+		}
+	}
+
 	results, err := r.Run(ctx)
 	if err != nil {
 		if r.workflow.IsBlocking() {
@@ -216,6 +228,12 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		if logFile != "" {
 			result.LogFile = logFile
 		}
+
+		// Record error for postToolUse workflows so preToolUse can block until acknowledged
+		if r.isPostToolUseEvent() {
+			r.recordPostToolUseError(results)
+		}
+
 		return result
 	}
 
@@ -519,4 +537,53 @@ func (r *Runner) runAction(ctx context.Context, step schema.Step, name string, s
 // We standardize on PowerShell Core (pwsh) for cross-platform consistency
 func defaultShell() string {
 	return "pwsh"
+}
+
+// isPostToolUseEvent returns true if this workflow was triggered by a postToolUse event
+func (r *Runner) isPostToolUseEvent() bool {
+	if r.event == nil {
+		return false
+	}
+
+	// Check event lifecycle
+	if r.event.GetLifecycle() == "post" {
+		return true
+	}
+
+	// Check hook type
+	if r.event.Hook != nil && r.event.Hook.Type == "postToolUse" {
+		return true
+	}
+
+	return false
+}
+
+// recordPostToolUseError writes a session error for failed postToolUse workflows
+func (r *Runner) recordPostToolUseError(results []StepResult) {
+	// Find the first failed step
+	var failedStep *StepResult
+	for i := range results {
+		if !results[i].Success {
+			failedStep = &results[i]
+			break
+		}
+	}
+
+	if failedStep == nil {
+		return
+	}
+
+	// Build error details
+	var details strings.Builder
+	if failedStep.Error != nil {
+		fmt.Fprintf(&details, "Error: %v\n", failedStep.Error)
+	}
+	if failedStep.Output != "" {
+		fmt.Fprintf(&details, "\nOutput:\n```\n%s\n```", strings.TrimSpace(failedStep.Output))
+	}
+
+	// Write to session error file
+	if err := session.WriteError(r.workflow.Name, failedStep.Name, details.String()); err != nil {
+		log.Printf("Warning: failed to record postToolUse error: %v", err)
+	}
 }
