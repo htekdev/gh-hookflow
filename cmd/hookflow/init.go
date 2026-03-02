@@ -411,35 +411,7 @@ func findSubstring(s, substr string) bool {
 	return false
 }
 
-// generateHooksJSON creates the hooks.json that integrates with Copilot CLI
-// This goes in .github/hooks/hooks.json per Copilot CLI documentation
-func generateHooksJSON() string {
-	// Direct call to gh hookflow - requires gh extension to be installed
-	return `{
-  "version": 1,
-  "hooks": {
-    "preToolUse": [
-      {
-        "type": "command",
-        "bash": "gh hookflow run --raw --event-type preToolUse --dir \"$PWD\"",
-        "powershell": "gh hookflow run --raw --event-type preToolUse --dir (Get-Location)",
-        "timeoutSec": 60
-      }
-    ],
-    "postToolUse": [
-      {
-        "type": "command",
-        "bash": "gh hookflow run --raw --event-type postToolUse --dir \"$PWD\"",
-        "powershell": "gh hookflow run --raw --event-type postToolUse --dir (Get-Location)",
-        "timeoutSec": 60
-      }
-    ]
-  }
-}
-`
-}
-
-// generateExampleWorkflow creates an example workflow file
+// generateExampleWorkflowcreates an example workflow file
 func generateExampleWorkflow() string {
 	return `# Example hookflow workflow
 # Learn more: https://github.com/htekdev/gh-hookflow

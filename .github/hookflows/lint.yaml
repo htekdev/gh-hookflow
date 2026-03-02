@@ -1,0 +1,28 @@
+
+name: Lint Enforcement
+description: Runs golangci-lint before commit to catch lint errors early
+
+on:
+  commit:
+    lifecycle: pre
+
+blocking: true
+
+steps:
+  - name: Run golangci-lint
+    run: |
+      $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
+      $goPath = & $goCmd env GOPATH
+      $lintCmd = Join-Path $goPath "bin" "golangci-lint.exe"
+      if (-not (Test-Path $lintCmd)) {
+        $lintCmd = "golangci-lint"
+      }
+      $env:PATH = "$(Split-Path $goCmd);$env:PATH"
+      $output = & $lintCmd run 2>&1
+      $exitCode = $LASTEXITCODE
+      if ($exitCode -ne 0) {
+        Write-Host $output
+        Write-Error "golangci-lint found issues"
+        exit 1
+      }
+      Write-Host "golangci-lint: no issues found"

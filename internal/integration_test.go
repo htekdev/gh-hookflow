@@ -19,8 +19,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmpDir)
-	os.Setenv("HOOKFLOW_SESSION_DIR", tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	_ = os.Setenv("HOOKFLOW_SESSION_DIR", tmpDir)
 	os.Exit(m.Run())
 }
 
