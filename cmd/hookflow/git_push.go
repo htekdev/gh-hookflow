@@ -81,6 +81,7 @@ Examples:
 
 func init() {
 	gitPushCmd.Flags().StringP("dir", "d", "", "Working directory (default: current directory)")
+	gitPushCmd.Flags().SetInterspersed(false) // Pass all flags after git-push to git
 }
 
 func runGitPush(dir string, gitArgs []string) error {
