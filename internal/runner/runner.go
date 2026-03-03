@@ -189,17 +189,6 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 // If blocking=true and any step fails, returns a deny result with detailed logs
 // If blocking=false, returns an allow result even if steps fail (logs warnings instead)
 func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
-	// Check for unacknowledged errors from previous postToolUse operations
-	// If this is a preToolUse/pre-lifecycle event and there's an existing error, deny immediately
-	if r.event != nil && r.event.GetLifecycle() == "pre" {
-		hasErr, err := session.HasError()
-		if err != nil {
-			log.Printf("Warning: failed to check session error state: %v", err)
-		} else if hasErr {
-			return schema.NewDenyResult("A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing.")
-		}
-	}
-
 	results, err := r.Run(ctx)
 	if err != nil {
 		if r.workflow.IsBlocking() {

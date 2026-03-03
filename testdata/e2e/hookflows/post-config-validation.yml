@@ -9,6 +9,7 @@ on:
   file:
     types:
       - edit
+      - create
     lifecycle: post
     paths:
       - '**/*.config.*'

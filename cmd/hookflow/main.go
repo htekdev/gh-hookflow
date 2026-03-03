@@ -16,6 +16,7 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/logging"
 	"github.com/htekdev/gh-hookflow/internal/runner"
 	"github.com/htekdev/gh-hookflow/internal/schema"
+	"github.com/htekdev/gh-hookflow/internal/session"
 	"github.com/htekdev/gh-hookflow/internal/trigger"
 	"github.com/spf13/cobra"
 )
@@ -431,6 +432,20 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 		originalPath := evt.File.Path
 		evt.File.Path = normalizeFilePath(evt.File.Path, dir)
 		log.Debug("normalized path: %s -> %s", originalPath, evt.File.Path)
+	}
+
+	// Check for unacknowledged errors from previous postToolUse operations.
+	// This is a global gate — if there's a pending session error and this is
+	// a pre-lifecycle event, deny immediately regardless of workflow matching.
+	if evt.GetLifecycle() == "pre" {
+		hasErr, err := session.HasError()
+		if err != nil {
+			log.Warn("failed to check session error state: %v", err)
+		} else if hasErr {
+			log.Info("blocking pre-lifecycle event due to pending session error")
+			result := schema.NewDenyResult("A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing.")
+			return outputWorkflowResult(result)
+		}
 	}
 
 	// Discover workflows
