@@ -40,7 +40,7 @@ hookflow/
 
 The hookflow runtime enforces these checks **before** any event detection or workflow matching. They are non-negotiable and cannot be bypassed.
 
-1. **`git push` is automatically blocked.** All pushes must go through the `hookflow_git_push` MCP tool, which runs governance workflows before pushing. Never use `git push` directly.
+1. **`git push` is automatically blocked.** All pushes must go through `gh hookflow git-push`, which runs governance workflows before pushing. Never use `git push` directly.
 2. **Multiple git commands in a single tool call are denied immediately.** Do not chain git commands with `&&`, `;`, `|`, or newlines. Each git operation must be a separate tool call so hookflow can evaluate each one individually.
 
 These guards scan raw hook input regardless of tool name, so they work even if the Copilot CLI tool name changes.
@@ -49,7 +49,6 @@ These guards scan raw hook input regardless of tool name, so they work even if t
 
 These tool calls bypass primitive guards and session error checks:
 - `hookflow_get_error` — always allowed so the agent can clear session errors (prevents deadlock)
-- `hookflow_git_push` / `hookflow_git_push_status` — MCP tools managed by hookflow itself
 
 ## Session Error / denyNextToolCall Flow
 
@@ -147,20 +146,27 @@ event.git.*        → git-specific fields (message, branch, etc.)
 
 ## MCP Tools (`internal/mcp/`)
 
-The hookflow MCP server (`gh hookflow mcp serve`) exposes these tools to the Copilot agent:
+The hookflow MCP server (`gh hookflow mcp serve`) exposes one tool to the Copilot agent:
 
 | Tool | Description | Input |
 |---|---|---|
 | `hookflow_get_error` | Read and clear the current session error | _(none)_ |
-| `hookflow_git_push` | Start an async git push with pre/post workflows | `{ cwd, args }` |
-| `hookflow_git_push_status` | Poll status of a git push operation | `{ activity_id }` |
 
-### Git Push Flow (MCP)
+## Git Push CLI Commands
 
-1. Agent calls `hookflow_git_push` with `cwd` and `args`
-2. Tool creates an activity, starts 3-phase push in a goroutine, returns `{ activity_id, next_step }`
-3. Agent calls `hookflow_git_push_status` with the `activity_id` to check progress
-4. While running: response includes `next_step` telling agent to check again
+Git push uses CLI commands (not MCP) because MCP server processes don't inherit the full terminal PATH:
+
+| Command | Description |
+|---|---|
+| `gh hookflow git-push [args...]` | Run 3-phase push: pre-push workflows → git push → post-push workflows. Prints activity ID immediately. |
+| `gh hookflow git-push-status <id>` | Check progress of a push by activity ID. |
+
+### Git Push Flow
+
+1. Agent runs `gh hookflow git-push origin main` in a shell
+2. Command prints `{ activity_id, status: "running", next_step }` immediately
+3. Push runs synchronously in the background (pre-push → push → post-push)
+4. Agent runs `gh hookflow git-push-status <activity_id>` to check progress
 5. When done: response includes full `pre_push`, `push`, `post_push` results
 
 ## Testing
