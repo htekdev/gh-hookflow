@@ -1003,23 +1003,25 @@ func isHookflowSelfRepair(evt *schema.Event, dir string) bool {
 }
 
 // isSessionErrorFileRead checks if the raw hook input is a `view` tool call
-// targeting the session error file (.hookflow/sessions/{id}/error.md).
-// Uses a regex pattern to handle both forward and backslash path separators.
+// targeting the session error file. Compares the requested path against the
+// actual resolved error file path (handles HOOKFLOW_SESSION_DIR overrides).
 func isSessionErrorFileRead(input []byte) bool {
-	path := extractToolArgsPath(input)
-	if path == "" {
+	reqPath := extractToolArgsPath(input)
+	if reqPath == "" {
 		return false
 	}
-	return sessionErrorFilePattern.MatchString(path)
-}
 
-// sessionErrorFilePattern matches paths like:
-//
-//	~/.hookflow/sessions/{sessionId}/error.md
-//	C:\Users\...\.hookflow\sessions\{sessionId}\error.md
-//
-// Handles both forward slashes and backslashes.
-var sessionErrorFilePattern = regexp.MustCompile(`\.hookflow[/\\]sessions[/\\][^/\\]+[/\\]error\.md$`)
+	errorPath, err := session.GetErrorFilePath()
+	if err != nil {
+		return false
+	}
+
+	// Normalize both paths: forward slashes, lowercase (Windows is case-insensitive)
+	normalize := func(p string) string {
+		return strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+	}
+	return normalize(reqPath) == normalize(errorPath)
+}
 
 // extractToolArgsPath extracts the "path" field from raw hook input toolArgs.
 // Handles both JSON object and JSON string formats (preToolUse sends toolArgs
