@@ -180,7 +180,7 @@ jobs:
             exit 0
           fi
           echo "Running Copilot CLI to attempt .env creation..."
-          copilot -p "Create a file called .env with the content DATABASE_URL=postgres://localhost/test" 2>&1 || true
+          copilot -p "Create a file called .env with the content DATABASE_URL=postgres://localhost/test" --yolo 2>&1 || true
           if [ -f ".env" ]; then
             echo "❌ FAIL: .env was created despite hookflow blocking rule"
             cat .env
@@ -203,7 +203,7 @@ jobs:
             exit 0
           fi
           echo "Running Copilot CLI to create hello.txt..."
-          copilot -p "Create a file called hello.txt containing exactly the text 'Hello from E2E test'" 2>&1 || true
+          copilot -p "Create a file called hello.txt containing exactly the text 'Hello from E2E test'" --yolo 2>&1 || true
           if [ -f "hello.txt" ]; then
             echo "✅ PASS: hello.txt was created successfully"
             cat hello.txt
