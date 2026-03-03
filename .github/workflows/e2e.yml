@@ -95,9 +95,9 @@ jobs:
         working-directory: e2e-workspace
         run: |
           echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc123"},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test2.json 2>&1
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test2.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test2.json
-          grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test2.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test2.json
           echo "✅ PASS: .env creation was correctly blocked"
 
       # ── Test 3: Allow normal file (hookflow run --raw) ─────
@@ -106,9 +106,9 @@ jobs:
         working-directory: e2e-workspace
         run: |
           echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"Hello World"},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test3.json 2>&1
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test3.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test3.json
-          grep -q '"permissionDecision":"allow"' $RUNNER_TEMP/e2e-test3.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test3.json
           echo "✅ PASS: hello.txt creation was correctly allowed"
 
       # ── Test 4: Block .key file (hookflow run --raw) ───────
@@ -117,9 +117,9 @@ jobs:
         working-directory: e2e-workspace
         run: |
           echo '{"toolName":"edit","toolArgs":{"path":"server.key","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test4.json 2>&1
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test4.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test4.json
-          grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test4.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test4.json
           echo "✅ PASS: .key file edit was correctly blocked"
 
       # ── Test 5: Post-lifecycle runs but doesn't block ──────
@@ -128,10 +128,10 @@ jobs:
         working-directory: e2e-workspace
         run: |
           echo '{"toolName":"edit","toolArgs":{"path":"main.go","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test5.json 2>&1
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test5.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test5.json
           # Post-lifecycle hooks should not deny
-          if grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test5.json; then
+          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test5.json; then
             echo "❌ FAIL: post-edit notification should not deny"
             exit 1
           fi
@@ -144,9 +144,9 @@ jobs:
         continue-on-error: true
         run: |
           echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"quick fix\""},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6a.json 2>&1
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test6a.json
-          if grep -q '"permissionDecision":"deny"' $RUNNER_TEMP/e2e-test6a.json; then
+          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test6a.json; then
             echo "✅ PASS: bad commit message was correctly blocked"
           else
             echo "⚠️ INFO: git commit detection from bash command may vary"
@@ -158,9 +158,9 @@ jobs:
         continue-on-error: true
         run: |
           echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"fix: resolve login issue\""},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6b.json 2>&1
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6b.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test6b.json
-          if grep -q '"permissionDecision":"allow"' $RUNNER_TEMP/e2e-test6b.json; then
+          if grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test6b.json; then
             echo "✅ PASS: good commit message was correctly allowed"
           else
             echo "⚠️ INFO: git commit detection from bash command may vary"
