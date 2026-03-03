@@ -104,7 +104,7 @@ jobs:
         working-directory: e2e-workspace
         shell: bash
         run: |
-          gh hookflow init --force --repo
+          gh hookflow init --force
           echo "=== hooks.json ==="
           cat ~/.copilot/hooks.json
           echo ""
