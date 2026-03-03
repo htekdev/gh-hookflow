@@ -37,6 +37,7 @@ steps:
   - name: Monitor PR checks
     run: |
       $branch = git rev-parse --abbrev-ref HEAD
+      $headSha = git rev-parse HEAD
       $prJson = gh pr list --head $branch --json number,title --limit 1 2>$null
 
       if (!$prJson -or $prJson -eq "[]") {
@@ -47,20 +48,43 @@ steps:
       $prNumber = $pr.number
 
       Write-Host ""
-      Write-Host "Monitoring checks for PR #$prNumber..."
+      Write-Host "Monitoring checks for PR #$prNumber (commit $($headSha.Substring(0,7)))..."
       Write-Host ""
 
-      # Wait for checks to appear (they may take a moment after push)
-      $maxWait = 30
+      # Wait for GitHub to register the new commit against the PR
+      $maxWait = 90
       $waited = 0
       while ($waited -lt $maxWait) {
-        $checksJson = gh pr checks $prNumber --json name,state,startedAt 2>$null
-        if ($checksJson -and $checksJson -ne "[]") {
+        $prHead = (gh pr view $prNumber --json headRefOid --jq '.headRefOid') 2>$null
+        if ($prHead -and $prHead.Trim() -eq $headSha) {
+          Write-Host "PR head matches pushed commit."
           break
         }
         Start-Sleep -Seconds 5
         $waited += 5
-        Write-Host "Waiting for checks to start... ($waited`s)"
+        Write-Host "Waiting for PR to update to pushed commit... ($waited`s)"
+      }
+
+      if ($waited -ge $maxWait) {
+        Write-Host "Timed out waiting for PR head to update. Checking current state..."
+      }
+
+      # Wait for checks to appear for the new commit
+      $maxWait = 60
+      $waited = 0
+      while ($waited -lt $maxWait) {
+        $checksJson = gh pr checks $prNumber --json name,state 2>$null
+        if ($checksJson -and $checksJson -ne "[]") {
+          $checks = $checksJson | ConvertFrom-Json
+          $pending = ($checks | Where-Object { $_.state -eq "PENDING" -or $_.state -eq "QUEUED" -or $_.state -eq "IN_PROGRESS" }).Count
+          if ($pending -gt 0) {
+            Write-Host "Found $($checks.Count) checks ($pending pending). Waiting for completion..."
+            break
+          }
+        }
+        Start-Sleep -Seconds 5
+        $waited += 5
+        Write-Host "Waiting for new checks to start... ($waited`s)"
       }
 
       if (!$checksJson -or $checksJson -eq "[]") {
@@ -73,12 +97,12 @@ steps:
       $result = gh pr checks $prNumber --watch 2>&1
 
       # Get final status
-      $finalChecks = gh pr checks $prNumber --json name,state,conclusion 2>$null
+      $finalChecks = gh pr checks $prNumber --json name,state 2>$null
       if ($finalChecks) {
         $checks = $finalChecks | ConvertFrom-Json
         $total = $checks.Count
-        $passed = ($checks | Where-Object { $_.conclusion -eq "SUCCESS" }).Count
-        $failed = ($checks | Where-Object { $_.conclusion -eq "FAILURE" }).Count
+        $passed = ($checks | Where-Object { $_.state -eq "SUCCESS" }).Count
+        $failed = ($checks | Where-Object { $_.state -eq "FAILURE" }).Count
         $other = $total - $passed - $failed
 
         Write-Host ""
@@ -93,7 +117,7 @@ steps:
 
         Write-Host ""
         foreach ($check in $checks) {
-          $icon = if ($check.conclusion -eq "SUCCESS") { "pass" } elseif ($check.conclusion -eq "FAILURE") { "FAIL" } else { "?   " }
+          $icon = if ($check.state -eq "SUCCESS") { "pass" } elseif ($check.state -eq "FAILURE") { "FAIL" } else { "?   " }
           Write-Host "  [$icon] $($check.name)"
         }
         Write-Host ""
