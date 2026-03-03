@@ -32,6 +32,15 @@ hookflow/
     └── npm-wrapper/      # npm package for CLI distribution
 ```
 
+## Primitive Guards (Critical Safety)
+
+The hookflow runtime enforces these checks **before** any event detection or workflow matching. They are non-negotiable and cannot be bypassed.
+
+1. **`git push` is automatically blocked.** All pushes must go through `gh hookflow git-push` (or `hookflow git-push`), which runs governance workflows before pushing. Never use `git push` directly.
+2. **Multiple git commands in a single tool call are denied immediately.** Do not chain git commands with `&&`, `;`, `|`, or newlines. Each git operation must be a separate tool call so hookflow can evaluate each one individually.
+
+These guards scan raw hook input regardless of tool name, so they work even if the Copilot CLI tool name changes.
+
 ## Shell Standard
 
 **All workflow `run:` steps use PowerShell Core (pwsh)** for cross-platform consistency.
