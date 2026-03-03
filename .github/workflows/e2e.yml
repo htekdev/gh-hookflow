@@ -383,11 +383,10 @@ jobs:
           grep -q "console.log" $RUNNER_TEMP/e2e-test13c.json
           echo "✅ PASS: Edit with console.log was correctly blocked"
 
-      # ── Test 14: Copilot CLI denyNextToolCall (post → pre) ─
-      - name: 'Test 14: Copilot CLI - post failure blocks next tool call'
+      # ── Test 14: Copilot CLI post-error feedback loop ──────
+      - name: 'Test 14: Copilot CLI - post-error feedback corrects file'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test14
         working-directory: e2e-workspace
         timeout-minutes: 5
         shell: bash
@@ -396,32 +395,27 @@ jobs:
             echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
             exit 0
           fi
-          mkdir -p $HOOKFLOW_SESSION_DIR
-          # Clean stale session errors from previous tests (PID-based dirs may persist)
           find ~/.hookflow -name "error.md" -delete 2>/dev/null || true
-          # Single prompt that triggers two tool calls:
-          # 1st: create app.config.json → post-lifecycle validation fails → session error recorded
-          # 2nd: create greeting.txt → pre-lifecycle check sees session error → denied
-          echo "Running Copilot CLI with a prompt that needs two file creates..."
-          copilot -p "Do these two things in order: First, create a file called app.config.json with the content {\"key\": \"value\"}. Second, create a file called greeting.txt with the content Hello World." --yolo 2>&1 || true
+          rm -f api-spec.json notes.txt
+          # Prompt creates api-spec.json with endpoint+method but NOT response_schema.
+          # Post-lifecycle hook detects the missing field and errors.
+          # The agent should learn from the error and add response_schema.
+          copilot -p "Do two things: 1) Create api-spec.json with exactly this JSON: {\"endpoint\": \"/users\", \"method\": \"GET\"} 2) Create notes.txt with the text 'done'" --yolo 2>&1 || true
           echo ""
           echo "=== Checking results ==="
-          # The config file may or may not exist (pre allows it, post fails)
-          if [ -f "app.config.json" ]; then
-            echo "ℹ️  app.config.json was created (pre allowed, post failed)"
-          fi
-          # The greeting file should NOT exist because the session error blocks it
-          if [ -f "greeting.txt" ]; then
-            echo "❌ FAIL: greeting.txt was created despite session error blocking"
-            cat greeting.txt
-            rm -f greeting.txt app.config.json
-            rm -rf $HOOKFLOW_SESSION_DIR
-            exit 1
+          if [ -f "api-spec.json" ]; then
+            cat api-spec.json
+            if grep -q '"response_schema"' api-spec.json; then
+              echo "✅ PASS: api-spec.json has response_schema (agent learned from hookflow post-error feedback)"
+            else
+              echo "❌ FAIL: api-spec.json missing response_schema - post-error feedback loop did not work"
+              exit 1
+            fi
           else
-            echo "✅ PASS: greeting.txt was NOT created (blocked by session error from post-lifecycle failure)"
+            echo "❌ FAIL: api-spec.json was not created"
+            exit 1
           fi
-          rm -f app.config.json
-          rm -rf $HOOKFLOW_SESSION_DIR
+          rm -f api-spec.json notes.txt
 
       # ── Test 7: Copilot CLI integration ────────────────────
       - name: 'Test 7: Copilot CLI - block sensitive file'
@@ -484,6 +478,6 @@ jobs:
           echo "  Test 11:     Multi-step pipeline with expressions"
           echo "  Test 12:     Step timeout enforcement"
           echo "  Test 13a-c:  Content enforcement (console.log)"
-          echo "  Test 14:     Copilot CLI denyNextToolCall (conditional)"
+          echo "  Test 14:     Copilot CLI post-error feedback loop (conditional)"
           echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
           echo "════════════════════════════════════════"

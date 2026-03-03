@@ -17,7 +17,7 @@ Use `store_memory` proactively so future sessions don't repeat the same mistakes
 
 ```
 hookflow/
-├── cmd/hookflow/         # CLI entry point and commands
+├── cmd/hookflow/         # CLI entry point and commands (main.go has primitive guards + session error gate)
 ├── internal/
 │   ├── ai/               # Copilot AI integration for workflow generation
 │   ├── concurrency/      # Semaphore for parallel control
@@ -25,11 +25,15 @@ hookflow/
 │   ├── event/            # Event detection from hook input
 │   ├── expression/       # ${{ }} expression engine
 │   ├── logging/          # Production logging service
-│   ├── runner/           # Step execution
+│   ├── mcp/              # MCP server (hookflow_get_error tool for clearing session errors)
+│   ├── runner/           # Step execution (records post-lifecycle errors via session.WriteError)
 │   ├── schema/           # Workflow types and validation
+│   ├── session/          # Session error persistence (error.md read/write/clear)
 │   └── trigger/          # Event-to-trigger matching
-└── packages/
-    └── npm-wrapper/      # npm package for CLI distribution
+├── packages/
+│   └── npm-wrapper/      # npm package for CLI distribution
+└── testdata/
+    └── e2e/hookflows/    # E2E test workflow files (copied to e2e-workspace/.github/hookflows/)
 ```
 
 ## Primitive Guards (Critical Safety)
@@ -40,6 +44,56 @@ The hookflow runtime enforces these checks **before** any event detection or wor
 2. **Multiple git commands in a single tool call are denied immediately.** Do not chain git commands with `&&`, `;`, `|`, or newlines. Each git operation must be a separate tool call so hookflow can evaluate each one individually.
 
 These guards scan raw hook input regardless of tool name, so they work even if the Copilot CLI tool name changes.
+
+## Session Error / denyNextToolCall Flow
+
+The session error mechanism is the primary way hookflow provides **post-lifecycle feedback** to agents. Copilot CLI postToolUse hooks cannot inject feedback directly (output is ignored), so hookflow uses a file-based error propagation pattern.
+
+### Flow
+
+1. **Post-lifecycle workflow fails** → `internal/runner/runner.go` calls `session.WriteError(workflowName, stepName, details)` → writes `~/.hookflow/sessions/{copilot-pid}/error.md` (or `$HOOKFLOW_SESSION_DIR/error.md` if set)
+2. **Next preToolUse arrives** → global gate in `cmd/hookflow/main.go` calls `session.HasError()` → if true, immediately denies with: _"A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing."_
+3. **Agent calls `hookflow_get_error`** → MCP server (`internal/mcp/server.go`) calls `session.ReadAndClearError()` → returns error markdown AND deletes the file
+4. **Next preToolUse** → `session.HasError()` returns false → proceeds normally
+
+### Key Design Details
+
+- **Global gate**: The session error check runs in `cmd/hookflow/main.go` BEFORE event detection or workflow matching. It fires even when no workflow matches.
+- **Primitive exemption**: `hookflow_get_error` is always allowed through (checked before session error gate) to prevent deadlock.
+- **Error format**: Markdown with workflow name, step name, timestamp, and captured step output/error.
+- **Session dir**: Defaults to `~/.hookflow/sessions/{copilot-pid}/`. Override with `HOOKFLOW_SESSION_DIR` env var (used in CI tests).
+- **Error file**: `error.md` inside the session dir. `session.HasError()` checks existence, `session.ReadAndClearError()` reads + deletes atomically.
+
+### Code Locations
+
+| Concern | File | Key Function/Section |
+|---|---|---|
+| Write error on post failure | `internal/runner/runner.go` | `recordPostToolUseError()` |
+| Error file CRUD | `internal/session/errors.go` | `WriteError()`, `HasError()`, `ReadAndClearError()` |
+| Global pre-lifecycle gate | `cmd/hookflow/main.go` | `runMatchingWorkflowsWithEvent()` (~line 520) |
+| Primitive exemption | `cmd/hookflow/main.go` | `hookflow_get_error` check (~line 389) |
+| MCP get_error handler | `internal/mcp/server.go` | `handleGetError()` |
+
+## Event & File Path Resolution
+
+When Copilot CLI sends hook input like `{"toolName":"create","toolArgs":{"path":"app.config.json"},"cwd":"/workspace"}`:
+
+1. **Event detection** (`internal/event/`): Parses toolName/toolArgs to determine event type (file create, edit, git commit, etc.) and extracts the file path.
+2. **Path normalization** (`cmd/hookflow/main.go:normalizeFilePath`): Converts backslashes to forward slashes, strips the cwd prefix to make it relative. E.g., `/workspace/app.config.json` → `app.config.json`.
+3. **In workflow steps**: `${{ event.file.path }}` is the **relative** normalized path. `${{ event.cwd }}` is the absolute cwd from the hook input.
+4. **Step execution cwd**: The runner sets `cmd.Dir` to the repository root (passed as `dir` to `NewRunner`). Steps can override with `working-directory:`.
+5. **File content access**: `${{ event.file.content }}` contains `file_text` (for create) or `new_str` (for edit) from toolArgs.
+
+### Expression Context (`internal/runner/runner.go:NewRunner`)
+
+```
+event.cwd          → hook input cwd (absolute)
+event.type         → "file", "git_commit", "git_push", etc.
+event.file.path    → normalized relative path
+event.file.action  → "create" or "edit"
+event.file.content → file content from toolArgs
+event.git.*        → git-specific fields (message, branch, etc.)
+```
 
 ## Shell Standard
 
@@ -83,10 +137,45 @@ These guards scan raw hook input regardless of tool name, so they work even if t
 ## Testing
 
 ```bash
-go test ./... -v              # All tests
+go test ./... -v -timeout 300s    # All tests (use 300s to avoid runner timeouts)
 go test ./internal/trigger/... -v  # Specific package
 go test ./... -coverprofile=coverage.out  # With coverage
 ```
+
+## E2E Testing (`.github/workflows/e2e.yml`)
+
+E2E tests run on ubuntu, macos, and windows. They use two modes:
+
+- **Direct tests (deterministic)**: Pipe JSON to `hookflow run --raw --event-type preToolUse|postToolUse` and assert on the JSON output. These don't need Copilot CLI and always produce consistent results.
+- **Copilot CLI tests (conditional)**: Require `COPILOT_GITHUB_TOKEN` secret. Run `copilot -p "..." --yolo` and check file system results. Non-deterministic by nature.
+
+### Test Workspace Setup
+
+1. Builds hookflow binary and installs as `gh` extension
+2. Creates `e2e-workspace/` with `.github/hookflows/` from `testdata/e2e/hookflows/`
+3. Initializes git repo + runs `gh hookflow init` (creates `.github/hooks/hooks.json` + `~/.copilot/mcp-config.json`)
+
+### E2E Workflow Files (`testdata/e2e/hookflows/`)
+
+| File | Purpose | Lifecycle |
+|---|---|---|
+| `block-sensitive-files.yml` | Blocks .env, .key, .pem, .cert files | pre |
+| `content-enforcement.yml` | Blocks JS/TS files with console.log | pre |
+| `require-commit-message.yml` | Enforces conventional commit format | pre |
+| `post-config-validation.yml` | Validates config file content after create/edit | post (blocking) |
+| `post-api-spec-validation.yml` | Validates api-spec.json has endpoint, method, response_schema | post (blocking) |
+| `post-edit-notify.yml` | Non-blocking post-edit notification | post |
+| `continue-on-error-linter.yml` | Tests continue-on-error step behavior | pre |
+| `paths-ignore-tests.yml` | Tests paths-ignore filtering for test files | pre |
+| `multi-step-pipeline.yml` | Tests failure()/always() expressions | pre |
+| `step-timeout.yml` | Tests step timeout enforcement | pre |
+
+### CI Patterns
+
+- `hookflow run --raw` returns non-zero on deny; use `|| true` in CI scripts with `set -e`
+- JSON output is pretty-printed; use `grep -qE` with `\s*` patterns
+- Session errors from PID-based dirs can persist between test steps; clean with `find ~/.hookflow -name "error.md" -delete` before Copilot CLI tests
+- `HOOKFLOW_SESSION_DIR` env var overrides session dir for test isolation
 
 ## CI Requirements
 
