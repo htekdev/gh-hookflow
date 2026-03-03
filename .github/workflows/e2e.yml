@@ -100,13 +100,17 @@ jobs:
           git add .
           git commit -m "chore: initial commit"
 
-      - name: Initialize hookflow
+      - name: Initialize hookflow in workspace
         working-directory: e2e-workspace
         shell: bash
         run: |
           gh hookflow init --force
-          echo "=== hooks.json ==="
-          cat ~/.copilot/hooks.json
+          echo ""
+          echo "=== Repo hooks (.github/hooks/hooks.json) ==="
+          cat .github/hooks/hooks.json
+          echo ""
+          echo "=== Global MCP config (~/.copilot/mcp-config.json) ==="
+          cat ~/.copilot/mcp-config.json
           echo ""
           echo "=== Verify hook command works ==="
           echo '{"toolName":"create","toolArgs":{"path":"test.txt"},"cwd":"'$(pwd)'"}' | gh hookflow run --raw --event-type preToolUse || true

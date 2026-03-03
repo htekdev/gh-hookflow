@@ -239,7 +239,7 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 func mergeMCPConfigJSON(path string, force bool) error {
 	// Define hookflow MCP server (uses gh extension)
 	hookflowMCP := map[string]interface{}{
-		"type":    "stdio",
+		"type":    "local",
 		"command": "gh",
 		"args":    []string{"hookflow", "mcp", "serve"},
 		"tools":   []string{"*"},
