@@ -20,10 +20,7 @@ The server communicates over stdin/stdout using JSON-RPC 2.0.
 It responds to the following MCP methods:
   - initialize: Returns server capabilities
   - tools/list: Returns available tools
-  - tools/call: Executes a tool
-
-Available tools:
-  - hookflow_get_error: Get and clear the current hookflow error`,
+  - tools/call: Executes a tool`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return mcp.Server()
 	},

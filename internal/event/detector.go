@@ -14,9 +14,10 @@ import (
 
 // RawHookInput represents the raw input from a Copilot hook
 type RawHookInput struct {
-	ToolName string          `json:"toolName"`
-	ToolArgs json.RawMessage `json:"toolArgs"`
-	Cwd      string          `json:"cwd"`
+	SessionID string          `json:"sessionId"`
+	ToolName  string          `json:"toolName"`
+	ToolArgs  json.RawMessage `json:"toolArgs"`
+	Cwd       string          `json:"cwd"`
 }
 
 // ToolArgs represents parsed tool arguments

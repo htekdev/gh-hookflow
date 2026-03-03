@@ -25,7 +25,7 @@ hookflow/
 │   ├── event/            # Event detection from hook input
 │   ├── expression/       # ${{ }} expression engine
 │   ├── logging/          # Production logging service
-│   ├── mcp/              # MCP server (hookflow_get_error tool for clearing session errors)
+│   ├── mcp/              # MCP server infrastructure
 │   ├── runner/           # Step execution (records post-lifecycle errors via session.WriteError)
 │   ├── schema/           # Workflow types and validation
 │   ├── session/          # Session error persistence (error.md read/write/clear)
@@ -48,7 +48,7 @@ These guards scan raw hook input regardless of tool name, so they work even if t
 ### Primitive Exemptions
 
 These tool calls bypass primitive guards and session error checks:
-- `hookflow_get_error` — always allowed so the agent can clear session errors (prevents deadlock)
+- `view` of the session error file — allowed so the agent can read error details (the file is auto-deleted in postToolUse)
 
 ## Session Error / denyNextToolCall Flow
 
@@ -56,17 +56,22 @@ The session error mechanism is the primary way hookflow provides **post-lifecycl
 
 ### Flow
 
-1. **Post-lifecycle workflow fails** → `internal/runner/runner.go` calls `session.WriteError(workflowName, stepName, details)` → writes `~/.hookflow/sessions/{copilot-pid}/error.md` (or `$HOOKFLOW_SESSION_DIR/error.md` if set)
-2. **Next preToolUse arrives** → global gate in `cmd/hookflow/main.go` calls `session.HasError()` → if true, immediately denies with: _"A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing."_
-3. **Agent calls `hookflow_get_error`** → MCP server (`internal/mcp/server.go`) calls `session.ReadAndClearError()` → returns error markdown AND deletes the file
-4. **Next preToolUse** → `session.HasError()` returns false → proceeds normally
+1. **Post-lifecycle workflow fails** → `internal/runner/runner.go` calls `session.WriteError(workflowName, stepName, details)` → writes `~/.hookflow/sessions/{sessionId}/error.md`
+2. **Next preToolUse arrives** → global gate in `cmd/hookflow/main.go` calls `session.HasError()` → if true, immediately denies with the error file path: _"You must read the error file to acknowledge it before continuing."_
+3. **Agent calls `view` on the error file** → primitive exemption allows it through (bypasses session error gate)
+4. **postToolUse fires for the view** → hookflow detects the agent read the error file → deletes `error.md`
+5. **Next preToolUse** → `session.HasError()` returns false → proceeds normally
+
+### Session Identity
+
+Copilot CLI includes `sessionId` (UUID) in every hook event payload. Hookflow uses this to set `HOOKFLOW_SESSION_DIR` to `~/.hookflow/sessions/{sessionId}/`, ensuring all processes agree on the session directory. If `HOOKFLOW_SESSION_DIR` is already set (e.g., in CI tests), the env var takes priority.
 
 ### Key Design Details
 
 - **Global gate**: The session error check runs in `cmd/hookflow/main.go` BEFORE event detection or workflow matching. It fires even when no workflow matches.
-- **Primitive exemption**: `hookflow_get_error` is always allowed through (checked before session error gate) to prevent deadlock.
+- **Error file read exemption**: `view` of the error file is always allowed through (checked before session error gate) to prevent deadlock.
 - **Error format**: Markdown with workflow name, step name, timestamp, and captured step output/error.
-- **Session dir**: Defaults to `~/.hookflow/sessions/{copilot-pid}/`. Override with `HOOKFLOW_SESSION_DIR` env var (used in CI tests).
+- **Session dir**: Resolved from `sessionId` in hook input → `~/.hookflow/sessions/{sessionId}/`. Override with `HOOKFLOW_SESSION_DIR` env var (used in CI tests). Falls back to PID-based detection if neither is available.
 - **Error file**: `error.md` inside the session dir. `session.HasError()` checks existence, `session.ReadAndClearError()` reads + deletes atomically.
 
 ### Code Locations
@@ -75,9 +80,9 @@ The session error mechanism is the primary way hookflow provides **post-lifecycl
 |---|---|---|
 | Write error on post failure | `internal/runner/runner.go` | `recordPostToolUseError()` |
 | Error file CRUD | `internal/session/errors.go` | `WriteError()`, `HasError()`, `ReadAndClearError()` |
-| Global pre-lifecycle gate | `cmd/hookflow/main.go` | `runMatchingWorkflowsWithEvent()` (~line 520) |
-| Primitive exemption | `cmd/hookflow/main.go` | `hookflow_get_error` check (~line 389) |
-| MCP get_error handler | `internal/mcp/server.go` | `handleGetError()` |
+| Session dir from sessionId | `cmd/hookflow/main.go` | Session identity section (~line 389) |
+| Error file read exemption | `cmd/hookflow/main.go` | `isSessionErrorFileRead()` |
+| Global pre-lifecycle gate | `cmd/hookflow/main.go` | `runMatchingWorkflowsWithEvent()` |
 
 ## Event & File Path Resolution
 
@@ -144,13 +149,9 @@ event.git.*        → git-specific fields (message, branch, etc.)
 - Shared by both the CLI command (`hookflow git-push`) and MCP tools
 - Updates activity state on disk as each phase progresses
 
-## MCP Tools (`internal/mcp/`)
+## MCP Server (`internal/mcp/`)
 
-The hookflow MCP server (`gh hookflow mcp serve`) exposes one tool to the Copilot agent:
-
-| Tool | Description | Input |
-|---|---|---|
-| `hookflow_get_error` | Read and clear the current session error | _(none)_ |
+The hookflow MCP server (`gh hookflow mcp serve`) provides infrastructure for future tools. Session errors are now handled via file-based read (the agent reads `error.md` directly using `view`, no MCP tool needed).
 
 ## Git Push CLI Commands
 

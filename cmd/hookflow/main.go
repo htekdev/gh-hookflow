@@ -386,19 +386,43 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 
 	log.Debug("input length=%d", len(input))
 
-	// ── Primitive exemptions ─────────────────────────────────────────
-	// The hookflow_get_error MCP tool must ALWAYS be allowed through.
-	// Without this, a session error creates a deadlock: the error blocks
-	// all tool calls, including the one meant to clear it.
+	// ── Session identity ────────────────────────────────────────────
+	// Copilot CLI includes sessionId (UUID) in every hook event.
+	// Use it to set the session directory so all downstream code
+	// (WriteError, HasError, ReadAndClearError) uses the same path.
 	var raw struct {
-		ToolName string `json:"toolName"`
+		ToolName  string `json:"toolName"`
+		SessionID string `json:"sessionId"`
 	}
-	if err := json.Unmarshal(input, &raw); err == nil {
-		if strings.Contains(raw.ToolName, "hookflow_get_error") {
-			log.Info("allowing hookflow_get_error tool through (primitive exemption)")
+	_ = json.Unmarshal(input, &raw)
+	if raw.SessionID != "" && os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
+		if dir, err := session.SessionDirForID(raw.SessionID); err == nil {
+			_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
+			log.Debug("set session dir from sessionId: %s", dir)
+		}
+	}
+
+	// ── Error file read exemption ───────────────────────────────────
+	// When a session error blocks the agent, the deny message tells it
+	// to read the error file. Allow `view` of that file through so the
+	// agent can see the error details. The postToolUse handler will
+	// delete the file once the agent has read it.
+	if lifecycle == "pre" && raw.ToolName == "view" {
+		if isSessionErrorFileRead(input) {
+			log.Info("allowing view of session error file (primitive exemption)")
 			result := schema.NewAllowResult()
 			done(nil)
 			return outputWorkflowResult(result)
+		}
+	}
+
+	// ── Post-lifecycle error file cleanup ────────────────────────────
+	// After the agent reads the error file via `view`, clear it so the
+	// session error gate stops blocking subsequent tool calls.
+	if lifecycle == "post" && raw.ToolName == "view" {
+		if isSessionErrorFileRead(input) {
+			_, _ = session.ReadAndClearError()
+			log.Info("cleared session error after agent read the error file")
 		}
 	}
 
@@ -528,7 +552,14 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 			log.Warn("failed to check session error state: %v", err)
 		} else if hasErr {
 			log.Info("blocking pre-lifecycle event due to pending session error")
-			result := schema.NewDenyResult("A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing.")
+			errorPath, _ := session.GetErrorFilePath()
+			msg := fmt.Sprintf(
+				"A previous tool operation failed validation. You must read the error file to acknowledge it before continuing.\n\n"+
+					"Error file: %s\n\n"+
+					"Use the view tool to read this file, then fix the issue and retry your operation.",
+				errorPath,
+			)
+			result := schema.NewDenyResult(msg)
 			return outputWorkflowResult(result)
 		}
 	}
@@ -969,6 +1000,50 @@ func isHookflowSelfRepair(evt *schema.Event, dir string) bool {
 	}
 	
 	return false
+}
+
+// isSessionErrorFileRead checks if the raw hook input is a `view` tool call
+// targeting the session error file (.hookflow/sessions/{id}/error.md).
+// Uses a regex pattern to handle both forward and backslash path separators.
+func isSessionErrorFileRead(input []byte) bool {
+	path := extractToolArgsPath(input)
+	if path == "" {
+		return false
+	}
+	return sessionErrorFilePattern.MatchString(path)
+}
+
+// sessionErrorFilePattern matches paths like:
+//
+//	~/.hookflow/sessions/{sessionId}/error.md
+//	C:\Users\...\.hookflow\sessions\{sessionId}\error.md
+//
+// Handles both forward slashes and backslashes.
+var sessionErrorFilePattern = regexp.MustCompile(`\.hookflow[/\\]sessions[/\\][^/\\]+[/\\]error\.md$`)
+
+// extractToolArgsPath extracts the "path" field from raw hook input toolArgs.
+// Handles both JSON object and JSON string formats (preToolUse sends toolArgs
+// as a JSON string, postToolUse sends it as a parsed object).
+func extractToolArgsPath(input []byte) string {
+	var raw struct {
+		ToolArgs json.RawMessage `json:"toolArgs"`
+	}
+	if err := json.Unmarshal(input, &raw); err != nil || len(raw.ToolArgs) == 0 {
+		return ""
+	}
+
+	var args struct {
+		Path string `json:"path"`
+	}
+	// Try direct unmarshal (toolArgs is a JSON object)
+	if err := json.Unmarshal(raw.ToolArgs, &args); err != nil {
+		// Try unwrapping string first (toolArgs is a JSON string in preToolUse)
+		var str string
+		if err2 := json.Unmarshal(raw.ToolArgs, &str); err2 == nil {
+			_ = json.Unmarshal([]byte(str), &args)
+		}
+	}
+	return args.Path
 }
 
 // normalizeFilePath converts an absolute file path to a relative path from dir

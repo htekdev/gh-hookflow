@@ -43,6 +43,16 @@ func GetSessionDir() (string, error) {
 	return filepath.Join(base, strconv.Itoa(pid)), nil
 }
 
+// SessionDirForID returns the session directory for a given session ID (UUID).
+// Returns ~/.hookflow/sessions/{sessionId}/
+func SessionDirForID(sessionID string) (string, error) {
+	base, err := sessionsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, sessionID), nil
+}
+
 // GetErrorFilePath returns the path to the error.md file for the current session.
 func GetErrorFilePath() (string, error) {
 	dir, err := GetSessionDir()
