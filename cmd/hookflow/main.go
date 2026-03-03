@@ -416,12 +416,13 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 	log := logging.Context("matcher")
 
-	// Block direct git push — must go through "hookflow git-push" instead
+	// Block direct git push — must go through "gh hookflow git-push" instead
 	if evt.Push != nil && evt.GetLifecycle() == "pre" {
-		log.Info("blocking direct git push — use 'hookflow git-push' instead")
+		log.Info("blocking direct git push — use 'gh hookflow git-push' instead")
 		result := schema.NewDenyResult(
-			"Direct git push is blocked by hookflow. Use 'hookflow git-push <args>' instead to enable pre/post push workflow validation.\n\n" +
-				"Example: hookflow git-push origin main")
+			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead to enable pre/post push workflow validation.\n\n" +
+				"Example: gh hookflow git-push origin main\n\n" +
+				"IMPORTANT: Remember to always use 'gh hookflow git-push' instead of 'git push' for all future pushes in this repository.")
 		return outputWorkflowResult(result)
 	}
 
