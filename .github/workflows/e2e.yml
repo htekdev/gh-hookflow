@@ -50,15 +50,22 @@ jobs:
 
       - name: Install hookflow as gh extension
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           GOOS=$(go env GOOS)
-          GOARCH=$(go env GOARCH)
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          cp bin/${{ matrix.binary }} "gh-hookflow-${GOOS}-${GOARCH}${EXT}"
-          gh extension install . --force 2>&1 || gh extension install . 2>&1
+
+          # Determine gh extension directory per platform
+          if [ "$GOOS" = "windows" ]; then
+            EXT_DIR="$LOCALAPPDATA/GitHub CLI/extensions/gh-hookflow"
+          else
+            EXT_DIR="$HOME/.local/share/gh/extensions/gh-hookflow"
+          fi
+
+          mkdir -p "$EXT_DIR"
+          cp "bin/${{ matrix.binary }}" "$EXT_DIR/gh-hookflow${EXT}"
+          if [ "$GOOS" != "windows" ]; then chmod +x "$EXT_DIR/gh-hookflow"; fi
+          echo "Installed gh-hookflow to: $EXT_DIR"
           gh hookflow version
 
       - name: Set up Node.js
@@ -96,8 +103,6 @@ jobs:
       - name: Initialize hookflow
         working-directory: e2e-workspace
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           gh hookflow init --force
           echo "=== hooks.json ==="
