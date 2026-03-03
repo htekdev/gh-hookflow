@@ -10,18 +10,6 @@ blocking: false
 steps:
   - name: Find linked PR
     run: |
-      # Ensure git and gh are on PATH (MCP server may not inherit full PATH)
-      if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        foreach ($p in @("C:\Program Files\Git\cmd", "/usr/bin", "/usr/local/bin")) {
-          if (Test-Path "$p/git*") { $env:PATH += [IO.Path]::PathSeparator + $p; break }
-        }
-      }
-      if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        foreach ($p in @("C:\Program Files\GitHub CLI", "C:\Program Files (x86)\GitHub CLI", "/usr/local/bin", "/opt/homebrew/bin")) {
-          if (Test-Path "$p/gh*") { $env:PATH += [IO.Path]::PathSeparator + $p; break }
-        }
-      }
-
       $branch = git rev-parse --abbrev-ref HEAD
       Write-Host "Branch: $branch"
 
@@ -48,18 +36,6 @@ steps:
 
   - name: Monitor PR checks
     run: |
-      # Ensure git and gh are on PATH (MCP server may not inherit full PATH)
-      if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        foreach ($p in @("C:\Program Files\Git\cmd", "/usr/bin", "/usr/local/bin")) {
-          if (Test-Path "$p/git*") { $env:PATH += [IO.Path]::PathSeparator + $p; break }
-        }
-      }
-      if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        foreach ($p in @("C:\Program Files\GitHub CLI", "C:\Program Files (x86)\GitHub CLI", "/usr/local/bin", "/opt/homebrew/bin")) {
-          if (Test-Path "$p/gh*") { $env:PATH += [IO.Path]::PathSeparator + $p; break }
-        }
-      }
-
       $branch = git rev-parse --abbrev-ref HEAD
       $headSha = git rev-parse HEAD
       $prJson = gh pr list --head $branch --json number,title --limit 1 2>$null

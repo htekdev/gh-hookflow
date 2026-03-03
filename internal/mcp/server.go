@@ -56,16 +56,6 @@ func Server() error {
 		Description: "Get and clear the current hookflow error. Call this when blocked by a previous validation failure.",
 	}, handleGetError)
 
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "hookflow_git_push",
-		Description: "Start a git push with pre/post workflow validation. Returns an activity_id to track progress. Use hookflow_git_push_status to check the result.",
-	}, handleGitPush)
-
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "hookflow_git_push_status",
-		Description: "Check the status of a git push operation started by hookflow_git_push.",
-	}, handleGitPushStatus)
-
 	err := server.Run(context.Background(), &mcp.StdioTransport{})
 	log.Info("MCP server shutting down")
 	return err

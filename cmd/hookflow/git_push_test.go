@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/htekdev/gh-hookflow/internal/activity"
-	"github.com/htekdev/gh-hookflow/internal/push"
 	"github.com/htekdev/gh-hookflow/internal/schema"
 )
 
@@ -128,40 +126,6 @@ func TestGitPushNotBlockedForPost(t *testing.T) {
 	// Post lifecycle should NOT be blocked
 	if result.PermissionDecision == "deny" {
 		t.Error("post lifecycle push should not be blocked")
-	}
-}
-
-// TestOutputGitPushResponse verifies JSON is written to stdout
-func TestOutputGitPushResponse(t *testing.T) {
-	resp := &push.Response{
-		ActivityID: "test123",
-		Status:     activity.StatusCompleted,
-		Message:    "All good",
-	}
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := outputGitPushResponse(resp)
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
-
-	var parsed push.Response
-	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
-		t.Fatalf("output is not valid JSON: %v\nOutput: %s", err, output)
-	}
-	if parsed.ActivityID != "test123" {
-		t.Errorf("expected activity_id 'test123', got %q", parsed.ActivityID)
 	}
 }
 

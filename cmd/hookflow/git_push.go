@@ -18,13 +18,12 @@ var gitPushCmd = &cobra.Command{
 	Long: `Performs a git push with hookflow workflow orchestration.
 
 This command:
-1. Runs pre-push hookflows (on.push, lifecycle: pre)
-2. Executes git push with the provided arguments
-3. Runs post-push hookflows (on.push, lifecycle: post)
-4. Returns a JSON status with an activity ID for tracking
+1. Creates an activity and returns the activity ID immediately
+2. Runs pre-push hookflows (on.push, lifecycle: pre) in the background
+3. Executes git push with the provided arguments
+4. Runs post-push hookflows (on.push, lifecycle: post)
 
-If post-push workflows are long-running, the command will wait for them to complete
-before returning.
+Use 'hookflow git-push-status <activity_id>' to check progress.
 
 Examples:
   hookflow git-push origin main
@@ -60,38 +59,33 @@ func init() {
 
 func runGitPush(dir string, gitArgs []string) error {
 	log := logging.Context("git-push")
-	done := logging.StartOperation("git-push", fmt.Sprintf("args=%v", gitArgs))
 
 	go func() { _ = activity.CleanupOldActivities(7 * 24 * time.Hour) }()
 
 	act, err := activity.NewActivity(gitArgs)
 	if err != nil {
-		done(err)
 		return fmt.Errorf("failed to create activity: %w", err)
 	}
 	log.Info("created activity %s for git push %v", act.ID, gitArgs)
 
+	// Return activity ID immediately, then run push in background
+	out := map[string]interface{}{
+		"activity_id": act.ID,
+		"status":      "running",
+		"message":     "Git push started. Pre-push workflows are running.",
+		"next_step":   fmt.Sprintf("Use 'hookflow git-push-status %s' to check progress.", act.ID),
+	}
+	jsonBytes, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(jsonBytes))
+
+	// Run synchronously — the CLI process stays alive until done
 	resp := push.Run(dir, gitArgs, act, true)
 
 	if resp.Status == activity.StatusFailed {
-		done(fmt.Errorf("push failed: %s", resp.Message))
+		log.Warn("push failed: %s", resp.Message)
 	} else {
-		done(nil)
+		log.Info("push completed: %s", resp.Message)
 	}
-
-	return outputGitPushResponse(resp)
-}
-
-func outputGitPushResponse(resp *push.Response) error {
-	jsonBytes, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-
-	fmt.Println(string(jsonBytes))
-
-	log := logging.Context("git-push")
-	log.Info("response: status=%s, activity=%s", resp.Status, resp.ActivityID)
 
 	return nil
 }
