@@ -50,6 +50,8 @@ jobs:
 
       - name: Install hookflow as gh extension
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           GOOS=$(go env GOOS)
           GOARCH=$(go env GOARCH)
@@ -94,6 +96,8 @@ jobs:
       - name: Initialize hookflow
         working-directory: e2e-workspace
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh hookflow init --force
           echo "=== hooks.json ==="
