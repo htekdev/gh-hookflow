@@ -13,8 +13,8 @@ import (
 
 // gitPushInput is the input schema for hookflow_git_push
 type gitPushInput struct {
-	Cwd  string   `json:"cwd" jsonschema:"description=Working directory (repository root)"`
-	Args []string `json:"args" jsonschema:"description=Git push arguments (e.g. ['origin', 'main'])"`
+	Cwd  string   `json:"cwd" jsonschema:"Working directory (repository root)"`
+	Args []string `json:"args" jsonschema:"Git push arguments (e.g. ['origin', 'main'])"`
 }
 
 // gitPushOutput is the output for hookflow_git_push
@@ -27,7 +27,7 @@ type gitPushOutput struct {
 
 // gitPushStatusInput is the input schema for hookflow_git_push_status
 type gitPushStatusInput struct {
-	ActivityID string `json:"activity_id" jsonschema:"description=Activity ID returned by hookflow_git_push"`
+	ActivityID string `json:"activity_id" jsonschema:"Activity ID returned by hookflow_git_push"`
 }
 
 // gitPushStatusOutput is the output for hookflow_git_push_status
