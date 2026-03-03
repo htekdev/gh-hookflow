@@ -8,7 +8,7 @@ on:
       - edit
     lifecycle: post
     paths:
-      - 'api-spec.json'
+      - '**/api-spec.json'
 
 blocking: true
 
