@@ -170,18 +170,25 @@ func runRepoScaffoldInit(dir string, force bool) error {
 
 // mergeGlobalHooksJSON creates or merges hookflow entries into ~/.copilot/hooks.json
 func mergeGlobalHooksJSON(path string, force bool) error {
-	// Define hookflow hooks
+	// Define hookflow hooks (global uses --global flag for sentinel checking)
 	hookflowPreHook := map[string]interface{}{
 		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type preToolUse",
-		"powershell": "gh hookflow run --raw --event-type preToolUse",
+		"bash":       "gh hookflow run --raw --event-type preToolUse --global",
+		"powershell": "gh hookflow run --raw --event-type preToolUse --global",
 		"timeoutSec": 1800,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type postToolUse",
-		"powershell": "gh hookflow run --raw --event-type postToolUse",
+		"bash":       "gh hookflow run --raw --event-type postToolUse --global",
+		"powershell": "gh hookflow run --raw --event-type postToolUse --global",
 		"timeoutSec": 1800,
+	}
+	sessionStartHook := map[string]interface{}{
+		"type":       "command",
+		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
+		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
+		"timeoutSec": 1800,
+		"comment":    "Ensure gh hookflow extension is installed and toggle global-only sentinel",
 	}
 
 	// Load existing config or create new one
@@ -219,6 +226,14 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 		postToolUse = removeHookflowHooks(postToolUse)
 		postToolUse = append(postToolUse, hookflowPostHook)
 		hooks["postToolUse"] = postToolUse
+	}
+
+	// Merge sessionStart hooks
+	sessionStart := getHookArray(hooks, "sessionStart")
+	if !containsHookflowHook(sessionStart) || force {
+		sessionStart = removeHookflowHooks(sessionStart)
+		sessionStart = append(sessionStart, sessionStartHook)
+		hooks["sessionStart"] = sessionStart
 	}
 
 	// Write merged config
