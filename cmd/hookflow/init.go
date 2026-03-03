@@ -175,13 +175,13 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type preToolUse",
 		"powershell": "gh hookflow run --raw --event-type preToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type postToolUse",
 		"powershell": "gh hookflow run --raw --event-type postToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 
 	// Load existing config or create new one
@@ -292,19 +292,19 @@ func mergeRepoHooksJSON(path string, force bool) error {
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type preToolUse",
 		"powershell": "gh hookflow run --raw --event-type preToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type postToolUse",
 		"powershell": "gh hookflow run --raw --event-type postToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	sessionStartHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
 		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
-		"timeoutSec": 10,
+		"timeoutSec": 1800,
 		"comment":    "Ensure gh hookflow extension is installed and configured",
 	}
 
