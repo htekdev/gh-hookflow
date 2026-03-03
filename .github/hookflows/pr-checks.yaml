@@ -5,7 +5,7 @@ on:
   push:
     lifecycle: post
 
-blocking: false
+blocking: true
 
 steps:
   - name: Find linked PR
