@@ -55,7 +55,10 @@ jobs:
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
 
-          # Determine gh extension directory per platform
+          # Install the real extension first so gh registers it properly
+          gh extension install htekdev/gh-hookflow || true
+
+          # Now overwrite the extension binary with our freshly built one
           if [ "$GOOS" = "windows" ]; then
             EXT_DIR="$LOCALAPPDATA/GitHub CLI/extensions/gh-hookflow"
           else

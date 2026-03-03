@@ -109,6 +109,7 @@ func runGitPush(dir string, gitArgs []string) error {
 	log.Info("created activity %s for git push %v", act.ID, gitArgs)
 
 	// Phase 1: Pre-push workflows
+	fmt.Fprintf(os.Stderr, "⏳ Phase 1/3: Running pre-push workflows...\n")
 	log.Info("phase 1: running pre-push workflows")
 	act.StartPhase(activity.PhasePrePush)
 
@@ -137,9 +138,11 @@ func runGitPush(dir string, gitArgs []string) error {
 	}
 
 	act.CompletePhase(activity.PhasePrePush, true, fmt.Sprintf("%d workflows passed", prePushResult.workflowsRun))
+	fmt.Fprintf(os.Stderr, "✅ Phase 1/3: Pre-push passed (%d workflows)\n", prePushResult.workflowsRun)
 	log.Info("pre-push passed (%d workflows)", prePushResult.workflowsRun)
 
 	// Phase 2: Git push
+	fmt.Fprintf(os.Stderr, "⏳ Phase 2/3: Executing git push...\n")
 	log.Info("phase 2: executing git push")
 	act.StartPhase(activity.PhasePush)
 
@@ -160,9 +163,11 @@ func runGitPush(dir string, gitArgs []string) error {
 
 	act.CompletePhase(activity.PhasePush, true, pushOutput)
 	_ = act.WriteLog(activity.PhasePush, "git-push", pushOutput)
+	fmt.Fprintf(os.Stderr, "✅ Phase 2/3: Git push succeeded\n")
 	log.Info("git push succeeded")
 
 	// Phase 3: Post-push workflows
+	fmt.Fprintf(os.Stderr, "⏳ Phase 3/3: Running post-push workflows (this may take several minutes if monitoring CI checks)...\n")
 	log.Info("phase 3: running post-push workflows")
 	act.StartPhase(activity.PhasePostPush)
 
@@ -256,6 +261,7 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string) (*wo
 
 	for _, wf := range matchingWorkflows {
 		log.Info("running workflow: %s", wf.Name)
+		fmt.Fprintf(os.Stderr, "  → Running %s-push workflow: %s\n", lifecycle, wf.Name)
 		r := runner.NewRunner(wf, evt, dir)
 		result := r.RunWithBlocking(ctx)
 

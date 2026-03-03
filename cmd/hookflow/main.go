@@ -386,6 +386,22 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 
 	log.Debug("input length=%d", len(input))
 
+	// ── Primitive exemptions ─────────────────────────────────────────
+	// The hookflow_get_error MCP tool must ALWAYS be allowed through.
+	// Without this, a session error creates a deadlock: the error blocks
+	// all tool calls, including the one meant to clear it.
+	var raw struct {
+		ToolName string `json:"toolName"`
+	}
+	if err := json.Unmarshal(input, &raw); err == nil {
+		if strings.Contains(raw.ToolName, "hookflow_get_error") {
+			log.Info("allowing hookflow_get_error tool through (primitive exemption)")
+			result := schema.NewAllowResult()
+			done(nil)
+			return outputWorkflowResult(result)
+		}
+	}
+
 	// ── Primitive guards ─────────────────────────────────────────────
 	// These run on raw input BEFORE event detection. They are critical
 	// safety checks that cannot be bypassed by tool name variations.
