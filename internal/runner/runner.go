@@ -198,6 +198,9 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		return schema.NewAllowResult()
 	}
 
+	// Build combined step output for activity logging
+	stepOutputs := r.buildStepOutputSummary(results)
+
 	// Check if any step failed (respecting continue-on-error)
 	anyStepFailed := false
 	for _, result := range results {
@@ -209,7 +212,9 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 
 	// If no failures, always allow
 	if !anyStepFailed {
-		return schema.NewAllowResult()
+		result := schema.NewAllowResult()
+		result.StepOutputs = stepOutputs
+		return result
 	}
 
 	// Steps failed - decision depends on blocking mode
@@ -220,6 +225,7 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		if logFile != "" {
 			result.LogFile = logFile
 		}
+		result.StepOutputs = stepOutputs
 
 		// Record error for postToolUse workflows so preToolUse can block until acknowledged
 		if r.isPostToolUseEvent() {
@@ -235,7 +241,34 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 			log.Printf("Warning: step '%s' failed (non-blocking): %v", result.Name, result.Error)
 		}
 	}
-	return schema.NewAllowResult()
+	result := schema.NewAllowResult()
+	result.StepOutputs = stepOutputs
+	return result
+}
+
+// buildStepOutputSummary creates a combined summary of all step outputs
+func (r *Runner) buildStepOutputSummary(results []StepResult) string {
+	var sb strings.Builder
+	for _, result := range results {
+		status := "✓"
+		if !result.Success {
+			status = "✗"
+		}
+		fmt.Fprintf(&sb, "[%s] %s", status, result.Name)
+		if result.Duration > 0 {
+			fmt.Fprintf(&sb, " (%s)", result.Duration.Round(time.Millisecond))
+		}
+		sb.WriteString("\n")
+		if result.Output != "" {
+			for _, line := range strings.Split(strings.TrimSpace(result.Output), "\n") {
+				sb.WriteString("  " + line + "\n")
+			}
+		}
+		if result.Error != nil {
+			fmt.Fprintf(&sb, "  Error: %v\n", result.Error)
+		}
+	}
+	return sb.String()
 }
 
 // buildDenialWithLogs creates a detailed log file and returns the path and denial reason

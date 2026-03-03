@@ -226,6 +226,9 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verb
 		if result.PermissionDecisionReason != "" {
 			logContent += fmt.Sprintf("Reason: %s\n", result.PermissionDecisionReason)
 		}
+		if result.StepOutputs != "" {
+			logContent += fmt.Sprintf("\n--- Step Output ---\n%s\n", result.StepOutputs)
+		}
 		if result.LogFile != "" {
 			if data, err := os.ReadFile(result.LogFile); err == nil {
 				logContent += fmt.Sprintf("\n--- Detailed Logs ---\n%s\n", string(data))

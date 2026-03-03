@@ -46,67 +46,63 @@ steps:
 
       $pr = ($prJson | ConvertFrom-Json)[0]
       $prNumber = $pr.number
+      $repoInfo = gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>$null
 
       Write-Host ""
       Write-Host "Monitoring checks for PR #$prNumber (commit $($headSha.Substring(0,7)))..."
       Write-Host ""
 
-      # Wait for GitHub to register the new commit against the PR
-      $maxWait = 90
+      # Wait for check runs to appear for the SPECIFIC pushed commit
+      $maxWait = 120
       $waited = 0
       while ($waited -lt $maxWait) {
-        $prHead = (gh pr view $prNumber --json headRefOid --jq '.headRefOid') 2>$null
-        if ($prHead -and $prHead.Trim() -eq $headSha) {
-          Write-Host "PR head matches pushed commit."
+        $runsJson = gh api "repos/$repoInfo/commits/$headSha/check-runs" --jq '.total_count' 2>$null
+        if ($runsJson -and [int]$runsJson -gt 0) {
+          Write-Host "Found $runsJson check run(s) for commit $($headSha.Substring(0,7))."
           break
         }
         Start-Sleep -Seconds 5
         $waited += 5
-        Write-Host "Waiting for PR to update to pushed commit... ($waited`s)"
+        Write-Host "Waiting for CI to start for commit $($headSha.Substring(0,7))... ($waited`s)"
       }
 
       if ($waited -ge $maxWait) {
-        Write-Host "Timed out waiting for PR head to update. Checking current state..."
-      }
-
-      # Wait for checks to appear for the new commit
-      $maxWait = 60
-      $waited = 0
-      while ($waited -lt $maxWait) {
-        $checksJson = gh pr checks $prNumber --json name,state 2>$null
-        if ($checksJson -and $checksJson -ne "[]") {
-          $checks = $checksJson | ConvertFrom-Json
-          $pending = ($checks | Where-Object { $_.state -eq "PENDING" -or $_.state -eq "QUEUED" -or $_.state -eq "IN_PROGRESS" }).Count
-          if ($pending -gt 0) {
-            Write-Host "Found $($checks.Count) checks ($pending pending). Waiting for completion..."
-            break
-          }
-        }
-        Start-Sleep -Seconds 5
-        $waited += 5
-        Write-Host "Waiting for new checks to start... ($waited`s)"
-      }
-
-      if (!$checksJson -or $checksJson -eq "[]") {
-        Write-Host "No CI checks configured for this PR"
+        Write-Host "No check runs appeared after ${maxWait}s. CI may not be configured."
         exit 0
       }
 
-      # Use gh pr checks --watch to wait for all checks to complete
+      # Poll commit-specific check runs until all complete
       Write-Host "Waiting for all checks to complete..."
-      $result = gh pr checks $prNumber --watch 2>&1
+      $maxWait = 1800
+      $waited = 0
+      while ($waited -lt $maxWait) {
+        $runsJson = gh api "repos/$repoInfo/commits/$headSha/check-runs" --jq '.check_runs[] | "\(.name)|\(.status)|\(.conclusion)"' 2>$null
+        if ($runsJson) {
+          $runs = $runsJson -split "`n" | Where-Object { $_ }
+          $incomplete = ($runs | Where-Object { -not $_.Contains("|completed|") }).Count
+          if ($incomplete -eq 0) {
+            Write-Host "All checks completed."
+            break
+          }
+          if ($waited % 30 -eq 0) {
+            Write-Host "  $($runs.Count) checks, $incomplete still running... ($waited`s)"
+          }
+        }
+        Start-Sleep -Seconds 10
+        $waited += 10
+      }
 
-      # Get final status
-      $finalChecks = gh pr checks $prNumber --json name,state 2>$null
-      if ($finalChecks) {
-        $checks = $finalChecks | ConvertFrom-Json
-        $total = $checks.Count
-        $passed = ($checks | Where-Object { $_.state -eq "SUCCESS" }).Count
-        $failed = ($checks | Where-Object { $_.state -eq "FAILURE" }).Count
+      # Report final results
+      $runsJson = gh api "repos/$repoInfo/commits/$headSha/check-runs" --jq '.check_runs[] | "\(.name)|\(.conclusion)"' 2>$null
+      if ($runsJson) {
+        $runs = $runsJson -split "`n" | Where-Object { $_ }
+        $passed = ($runs | Where-Object { $_.EndsWith("|success") }).Count
+        $failed = ($runs | Where-Object { $_.EndsWith("|failure") }).Count
+        $total = $runs.Count
         $other = $total - $passed - $failed
 
         Write-Host ""
-        Write-Host "=== PR Check Results ==="
+        Write-Host "=== PR Check Results (commit $($headSha.Substring(0,7))) ==="
         Write-Host "Total:  $total"
         Write-Host "Passed: $passed"
         Write-Host "Failed: $failed"
@@ -116,9 +112,12 @@ steps:
         }
 
         Write-Host ""
-        foreach ($check in $checks) {
-          $icon = if ($check.state -eq "SUCCESS") { "pass" } elseif ($check.state -eq "FAILURE") { "FAIL" } else { "?   " }
-          Write-Host "  [$icon] $($check.name)"
+        foreach ($run in $runs) {
+          $parts = $run -split '\|'
+          $name = $parts[0]
+          $conclusion = $parts[1]
+          $icon = if ($conclusion -eq "success") { "pass" } elseif ($conclusion -eq "failure") { "FAIL" } else { "?   " }
+          Write-Host "  [$icon] $name"
         }
         Write-Host ""
 
