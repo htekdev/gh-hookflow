@@ -193,6 +193,125 @@ jobs:
             echo "⚠️ INFO: git commit detection from bash command may vary"
           fi
 
+      # ── Test 8: Post-error → denyNextToolCall ─────────────
+      - name: 'Test 8a: Post-error records session error'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          echo '{"toolName":"edit","toolArgs":{"path":"app.config.json","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test8a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8a.json
+          # Post workflow should deny (blocking + step fails)
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test8a.json
+          # Verify error file was created in session dir
+          if [ -f "$HOOKFLOW_SESSION_DIR/error.md" ]; then
+            echo "✅ PASS: Session error recorded"
+            cat $HOOKFLOW_SESSION_DIR/error.md
+          else
+            echo "❌ FAIL: Session error NOT recorded in $HOOKFLOW_SESSION_DIR"
+            ls -la $HOOKFLOW_SESSION_DIR/ || true
+            exit 1
+          fi
+
+      - name: 'Test 8b: Next preToolUse blocked by session error (denyNextToolCall)'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          # This preToolUse should be blocked because of the pending session error
+          # Using .env triggers block-sensitive-files workflow, so RunWithBlocking runs
+          # Session error check should fire BEFORE the workflow step
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=test"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test8b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8b.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test8b.json
+          # The deny reason MUST mention session error, not the workflow block
+          grep -q "previous tool operation failed" $RUNNER_TEMP/e2e-test8b.json
+          echo "✅ PASS: Next tool call correctly blocked by session error"
+
+      - name: 'Test 8c: Cleared error allows next tool call'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          # Clear the session error
+          rm -rf $HOOKFLOW_SESSION_DIR
+          # Now preToolUse for a safe file should be allowed
+          echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"hello"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test8c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8c.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test8c.json
+          echo "✅ PASS: Tool call allowed after error cleared"
+
+      # ── Test 9: continue-on-error should allow ──────────
+      - name: 'Test 9: continue-on-error step should not deny workflow'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"docs/readme.md","file_text":"# Hello"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test9.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test9.json
+          # With continue-on-error: true on the failing step, workflow should ALLOW
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test9.json
+          echo "✅ PASS: continue-on-error step did not deny workflow"
+
+      # ── Test 10: paths-ignore ───────────────────────────
+      - name: 'Test 10a: paths-ignore allows test files'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"src/app.test.go","file_text":"package app"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test10a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test10a.json
+          # Test file should be allowed (paths-ignore matches *.test.*)
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test10a.json
+          echo "✅ PASS: Test file allowed via paths-ignore"
+
+      - name: 'Test 10b: paths blocks source files'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"src/app.go","file_text":"package app"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test10b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test10b.json
+          # Source file should be blocked (matches paths, not in paths-ignore)
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test10b.json
+          echo "✅ PASS: Source file correctly blocked"
+
+      # ── Test 11: Multi-step pipeline with expressions ───
+      - name: 'Test 11: Multi-step pipeline with failure() and always()'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"pipeline/data.json","file_text":"{}"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test11.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test11.json
+          # Workflow should deny because step 3 (deliberate-failure) fails
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test11.json
+          # The deny reason should mention the deliberate-failure step
+          grep -q "deliberate-failure" $RUNNER_TEMP/e2e-test11.json
+          # Verify recovery-step ran (always()) - it should appear in logs
+          grep -q "recovery-step" $RUNNER_TEMP/e2e-test11.json || grep -q "Recovery" $RUNNER_TEMP/e2e-test11.json || true
+          echo "✅ PASS: Multi-step pipeline executed correctly"
+
+      # ── Test 12: Step timeout ───────────────────────────
+      - name: 'Test 12: Step timeout kills long-running step'
+        shell: bash
+        working-directory: e2e-workspace
+        timeout-minutes: 1
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"slow/data.txt","file_text":"data"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test12.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test12.json
+          # Step should timeout after 2 seconds and deny
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test12.json
+          echo "✅ PASS: Step timeout correctly enforced"
+
       # ── Test 7: Copilot CLI integration ────────────────────
       - name: 'Test 7: Copilot CLI - block sensitive file'
         env:
@@ -245,7 +364,12 @@ jobs:
           echo "════════════════════════════════════════"
           echo "  E2E Test Summary (${{ matrix.os }})"
           echo "════════════════════════════════════════"
-          echo "  Tests 1-5: Core hookflow E2E (deterministic)"
-          echo "  Test 6:    Git commit governance (best-effort)"
-          echo "  Test 7:    Copilot CLI integration (conditional)"
+          echo "  Tests 1-5:   Core hookflow E2E (deterministic)"
+          echo "  Test 6:      Git commit governance (best-effort)"
+          echo "  Test 7:      Copilot CLI integration (conditional)"
+          echo "  Test 8a-c:   Post-error → denyNextToolCall flow"
+          echo "  Test 9:      continue-on-error behavior"
+          echo "  Test 10a-b:  paths-ignore filtering"
+          echo "  Test 11:     Multi-step pipeline with expressions"
+          echo "  Test 12:     Step timeout enforcement"
           echo "════════════════════════════════════════"

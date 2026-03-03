@@ -1,0 +1,42 @@
+# E2E Test: Multi-step pipeline with expressions
+# Tests step conditions (if), expression functions, failure()/always(),
+# step context (steps.X.outcome), and workflow env variables.
+
+name: Multi-Step Pipeline
+description: Multi-step workflow testing conditions, expressions, and step context
+
+on:
+  file:
+    types:
+      - create
+    paths:
+      - 'pipeline/**'
+
+blocking: true
+
+env:
+  PIPELINE_MODE: strict
+
+steps:
+  - name: initial-check
+    run: |
+      Write-Host "Step 1: Initial check"
+      Write-Host "Pipeline mode: ${{ env.PIPELINE_MODE }}"
+      Write-Host "File: ${{ event.file.path }}"
+
+  - name: expression-check
+    if: ${{ contains(event.file.path, 'pipeline/') }}
+    run: |
+      Write-Host "Step 2: Expression check passed"
+      Write-Host "Path contains 'pipeline/': true"
+
+  - name: deliberate-failure
+    run: |
+      Write-Host "Step 3: This step intentionally fails"
+      exit 1
+
+  - name: recovery-step
+    if: ${{ always() }}
+    run: |
+      Write-Host "Step 4: Recovery step (runs despite failure via always())"
+      Write-Host "Failure detected: ${{ failure() }}"

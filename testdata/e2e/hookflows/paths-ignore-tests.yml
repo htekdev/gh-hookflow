@@ -1,0 +1,25 @@
+# E2E Test: paths-ignore behavior
+# Blocks file creation in src/ EXCEPT test files (paths-ignore).
+
+name: Block Non-Test Source Files
+description: Blocks source file creation but allows test files via paths-ignore
+
+on:
+  file:
+    types:
+      - create
+    paths:
+      - 'src/**'
+    paths-ignore:
+      - '**/*.test.*'
+      - '**/*_test.*'
+      - '**/test_*'
+
+blocking: true
+
+steps:
+  - name: Block source file creation
+    run: |
+      Write-Host "BLOCKED: Source file creation requires review"
+      Write-Host "File: ${{ event.file.path }}"
+      exit 1
