@@ -48,6 +48,28 @@ jobs:
         shell: pwsh
         run: echo "${{ github.workspace }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      - name: Install hookflow as gh extension (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$(uname)" = "Darwin" ]; then
+            GH_DATA_DIR="$HOME/Library/Application Support/gh"
+          else
+            GH_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/gh"
+          fi
+          EXT_DIR="$GH_DATA_DIR/extensions/gh-hookflow"
+          mkdir -p "$EXT_DIR"
+          cp bin/hookflow "$EXT_DIR/gh-hookflow"
+          chmod +x "$EXT_DIR/gh-hookflow"
+
+      - name: Install hookflow as gh extension (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $extDir = Join-Path $env:LOCALAPPDATA "GitHub CLI\extensions\gh-hookflow"
+          New-Item -ItemType Directory -Path $extDir -Force | Out-Null
+          Copy-Item "bin\hookflow.exe" (Join-Path $extDir "gh-hookflow.exe")
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -60,6 +82,7 @@ jobs:
         shell: bash
         run: |
           hookflow version
+          gh hookflow version
           copilot --version
 
       # ── Prepare test workspace ─────────────────────────────
@@ -82,7 +105,8 @@ jobs:
 
       - name: Initialize hookflow
         working-directory: e2e-workspace
-        run: hookflow init --force
+        shell: bash
+        run: gh hookflow init --force
 
       # ── Test 1: Workflow validation ────────────────────────
       - name: 'Test 1: Validate E2E workflows'
@@ -172,7 +196,6 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         working-directory: e2e-workspace
         timeout-minutes: 5
-        continue-on-error: true
         shell: bash
         run: |
           if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
@@ -195,7 +218,6 @@ jobs:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         working-directory: e2e-workspace
         timeout-minutes: 5
-        continue-on-error: true
         shell: bash
         run: |
           if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
