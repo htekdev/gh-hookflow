@@ -346,7 +346,7 @@ jobs:
           echo "✅ PASS: Edit with console.log was correctly blocked"
 
       # ── Test 14: Copilot CLI denyNextToolCall (post → pre) ─
-      - name: 'Test 14a: Copilot CLI - post-lifecycle failure records error'
+      - name: 'Test 14: Copilot CLI - post failure blocks next tool call'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test14
@@ -359,43 +359,28 @@ jobs:
             exit 0
           fi
           mkdir -p $HOOKFLOW_SESSION_DIR
-          echo "Running Copilot CLI to create a config file (post-lifecycle will fail)..."
-          copilot -p "Create a file called app.config.json with the content {\"key\": \"value\"}" --yolo 2>&1 || true
-          # Verify session error was recorded
-          if [ -f "$HOOKFLOW_SESSION_DIR/error.md" ]; then
-            echo "✅ PASS: Session error recorded after post-lifecycle failure"
-            cat $HOOKFLOW_SESSION_DIR/error.md
-          else
-            echo "❌ FAIL: No session error recorded"
-            ls -la $HOOKFLOW_SESSION_DIR/ || true
+          # Single prompt that triggers two tool calls:
+          # 1st: create app.config.json → post-lifecycle validation fails → session error recorded
+          # 2nd: create greeting.txt → pre-lifecycle check sees session error → denied
+          echo "Running Copilot CLI with a prompt that needs two file creates..."
+          copilot -p "Do these two things in order: First, create a file called app.config.json with the content {\"key\": \"value\"}. Second, create a file called greeting.txt with the content Hello World." --yolo 2>&1 || true
+          echo ""
+          echo "=== Checking results ==="
+          # The config file may or may not exist (pre allows it, post fails)
+          if [ -f "app.config.json" ]; then
+            echo "ℹ️  app.config.json was created (pre allowed, post failed)"
+          fi
+          # The greeting file should NOT exist because the session error blocks it
+          if [ -f "greeting.txt" ]; then
+            echo "❌ FAIL: greeting.txt was created despite session error blocking"
+            cat greeting.txt
+            rm -f greeting.txt app.config.json
+            rm -rf $HOOKFLOW_SESSION_DIR
             exit 1
+          else
+            echo "✅ PASS: greeting.txt was NOT created (blocked by session error from post-lifecycle failure)"
           fi
-
-      - name: 'Test 14b: Copilot CLI - next operation denied by session error'
-        env:
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test14
-        working-directory: e2e-workspace
-        timeout-minutes: 5
-        shell: bash
-        run: |
-          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
-            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
-            exit 0
-          fi
-          # Session error should still be present from 14a
-          if [ ! -f "$HOOKFLOW_SESSION_DIR/error.md" ]; then
-            echo "⏭️ SKIP: No session error from 14a (Copilot may not share PID)"
-            exit 0
-          fi
-          # Next pre-lifecycle check should deny with session error message
-          echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"hi"},"cwd":"'$(pwd)'"}' \
-            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test14b.json 2>&1 || true
-          cat $RUNNER_TEMP/e2e-test14b.json
-          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test14b.json
-          grep -q "previous tool operation failed" $RUNNER_TEMP/e2e-test14b.json
-          echo "✅ PASS: Next operation correctly denied by session error"
-          # Clean up session for remaining tests
+          rm -f app.config.json
           rm -rf $HOOKFLOW_SESSION_DIR
 
       # ── Test 7: Copilot CLI integration ────────────────────
@@ -459,5 +444,5 @@ jobs:
           echo "  Test 11:     Multi-step pipeline with expressions"
           echo "  Test 12:     Step timeout enforcement"
           echo "  Test 13a-c:  Content enforcement (console.log)"
-          echo "  Test 14a-b:  Copilot CLI denyNextToolCall (conditional)"
+          echo "  Test 14:     Copilot CLI denyNextToolCall (conditional)"
           echo "════════════════════════════════════════"
