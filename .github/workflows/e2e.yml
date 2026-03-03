@@ -312,6 +312,45 @@ jobs:
           grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test12.json
           echo "✅ PASS: Step timeout correctly enforced"
 
+      # ── Test 15: Primitive guard - git push blocked ─────
+      - name: 'Test 15a: Block git push regardless of tool name'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"unknown_shell_tool","toolArgs":{"command":"git push origin main"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test15a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15a.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15a.json
+          grep -q "git push" $RUNNER_TEMP/e2e-test15a.json || grep -q "hookflow git-push" $RUNNER_TEMP/e2e-test15a.json
+          echo "✅ PASS: git push blocked regardless of tool name"
+
+      - name: 'Test 15b: Block multi-git commands in single call'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git add . && git commit -m \"fix\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test15b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15b.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15b.json
+          grep -q "Multiple git commands" $RUNNER_TEMP/e2e-test15b.json
+          echo "✅ PASS: Multi-git commands blocked"
+
+      - name: 'Test 15c: Post lifecycle skips primitive guards'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git push origin main"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test15c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15c.json
+          # Post lifecycle should NOT be blocked by primitive guards
+          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15c.json; then
+            if grep -q "git push" $RUNNER_TEMP/e2e-test15c.json; then
+              echo "❌ FAIL: Post lifecycle should not trigger git push guard"
+              exit 1
+            fi
+          fi
+          echo "✅ PASS: Post lifecycle skips primitive guards"
+
       # ── Test 13: Content enforcement ───────────────────
       - name: 'Test 13a: Block JS file with console.log'
         shell: bash
@@ -445,4 +484,5 @@ jobs:
           echo "  Test 12:     Step timeout enforcement"
           echo "  Test 13a-c:  Content enforcement (console.log)"
           echo "  Test 14:     Copilot CLI denyNextToolCall (conditional)"
+          echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
           echo "════════════════════════════════════════"

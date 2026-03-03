@@ -386,6 +386,17 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 
 	log.Debug("input length=%d", len(input))
 
+	// ── Primitive guards ─────────────────────────────────────────────
+	// These run on raw input BEFORE event detection. They are critical
+	// safety checks that cannot be bypassed by tool name variations.
+	if lifecycle == "pre" {
+		if result := primitiveGuards(input); result != nil {
+			log.Info("primitive guard triggered: %s", result.PermissionDecisionReason)
+			done(nil)
+			return outputWorkflowResult(result)
+		}
+	}
+
 	// Use the event detector to parse and build the event
 	detector := event.NewDetector(nil) // nil = use real git provider
 	evt, err := detector.DetectFromRawInput(input)
@@ -413,17 +424,73 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 	return err
 }
 
+// primitiveGuards performs critical safety checks on raw hook input before
+// any event detection or workflow matching. These are non-negotiable.
+func primitiveGuards(input []byte) *schema.WorkflowResult {
+	// Parse just enough to extract the command
+	var raw struct {
+		ToolArgs json.RawMessage `json:"toolArgs"`
+	}
+	if err := json.Unmarshal(input, &raw); err != nil {
+		return nil // let event detector handle parse errors
+	}
+
+	// Extract command from toolArgs (handles command, script, code fields)
+	var args struct {
+		Command string `json:"command"`
+		Script  string `json:"script"`
+		Code    string `json:"code"`
+	}
+	if len(raw.ToolArgs) > 0 {
+		_ = json.Unmarshal(raw.ToolArgs, &args)
+	}
+	command := args.Command
+	if command == "" {
+		command = args.Script
+	}
+	if command == "" {
+		command = args.Code
+	}
+	if command == "" {
+		return nil // no command to check
+	}
+
+	// Guard 1: Block git push — must use "gh hookflow git-push" instead
+	if primitiveGitPushPattern.MatchString(command) {
+		return schema.NewDenyResult(
+			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead.\n\n" +
+				"Example: gh hookflow git-push origin main\n\n" +
+				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
+	}
+
+	// Guard 2: Block multiple git commands in one tool call
+	if primitiveMultiGitPattern.MatchString(command) {
+		return schema.NewDenyResult(
+			"Multiple git commands in a single tool call are not allowed. " +
+				"Each git command must be its own separate tool call so hookflow can validate each one individually.")
+	}
+
+	return nil
+}
+
+var (
+	// Matches "git push" anywhere in the command (multiline safe)
+	primitiveGitPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+push\b`)
+	// Matches two or more git commands chained via &&, ;, newlines, or pipes
+	primitiveMultiGitPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+\w+.*(?:&&|;|\n).*git\s+\w+`)
+)
+
 // runMatchingWorkflowsWithEvent runs workflows with a pre-built event
 func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 	log := logging.Context("matcher")
 
-	// Block direct git push — must go through "gh hookflow git-push" instead
+	// Block direct git push (belt-and-suspenders — also checked in primitiveGuards)
 	if evt.Push != nil && evt.GetLifecycle() == "pre" {
 		log.Info("blocking direct git push — use 'gh hookflow git-push' instead")
 		result := schema.NewDenyResult(
-			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead to enable pre/post push workflow validation.\n\n" +
+			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead.\n\n" +
 				"Example: gh hookflow git-push origin main\n\n" +
-				"IMPORTANT: Remember to always use 'gh hookflow git-push' instead of 'git push' for all future pushes in this repository.")
+				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
 		return outputWorkflowResult(result)
 	}
 

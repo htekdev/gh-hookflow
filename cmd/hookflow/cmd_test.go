@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to create temp session dir: %v\n", err)
 		os.Exit(1)
 	}
-	os.Setenv("HOOKFLOW_SESSION_DIR", dir)
+	_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
