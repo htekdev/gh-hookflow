@@ -465,6 +465,114 @@ jobs:
             echo "⚠️ INFO: hello.txt was not created - Copilot CLI may have used a different approach"
           fi
 
+      # ── Test 16: Global hooks sentinel toggle ─────────────
+      - name: 'Test 16a: Global flag skips when no sentinel (repo hooks active)'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          # No sentinel file exists → --global should skip and allow
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse --global > $RUNNER_TEMP/e2e-test16a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test16a.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test16a.json
+          echo "✅ PASS: Global mode skips processing when no sentinel (repo hooks active)"
+
+      - name: 'Test 16b: Global flag processes when sentinel exists (global-only)'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          # Create sentinel → global-only mode
+          touch $HOOKFLOW_SESSION_DIR/global-only
+          # .env should now be blocked by block-sensitive-files workflow
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse --global > $RUNNER_TEMP/e2e-test16b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test16b.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test16b.json
+          echo "✅ PASS: Global mode processes events when sentinel exists"
+          rm -f $HOOKFLOW_SESSION_DIR/global-only
+
+      - name: 'Test 16c: Sentinel toggle creates then deletes'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16c
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          # First call creates sentinel
+          echo '{}' | hookflow check-setup 2>&1 || true
+          if [ -f "$HOOKFLOW_SESSION_DIR/global-only" ]; then
+            echo "✅ First call created sentinel"
+          else
+            echo "❌ FAIL: First call did not create sentinel"
+            exit 1
+          fi
+          # Second call deletes sentinel
+          echo '{}' | hookflow check-setup 2>&1 || true
+          if [ ! -f "$HOOKFLOW_SESSION_DIR/global-only" ]; then
+            echo "✅ Second call deleted sentinel (toggle works)"
+          else
+            echo "❌ FAIL: Second call did not delete sentinel"
+            exit 1
+          fi
+          echo "✅ PASS: Sentinel toggle works correctly"
+          rm -rf $HOOKFLOW_SESSION_DIR
+
+      # ── Test 17: Global compliance check ────────────────────
+      - name: 'Test 17a: Global mode denies when hookflows exist but no repo hooks.json'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17
+        run: |
+          # Create a workspace with hookflows but NO .github/hooks/hooks.json
+          mkdir -p $RUNNER_TEMP/e2e-compliance/.github/hookflows
+          cat > $RUNNER_TEMP/e2e-compliance/.github/hookflows/test.yml << 'EOF'
+          name: test-workflow
+          on:
+            file:
+              paths: ["**"]
+          steps:
+            - run: echo ok
+          EOF
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          touch $HOOKFLOW_SESSION_DIR/global-only
+          echo '{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"'$RUNNER_TEMP/e2e-compliance'"}' \
+            | hookflow run --raw --event-type preToolUse --global --dir "$RUNNER_TEMP/e2e-compliance" > $RUNNER_TEMP/e2e-test17a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test17a.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test17a.json
+          grep -q "hookflow init" $RUNNER_TEMP/e2e-test17a.json
+          echo "✅ PASS: Global mode denies when repo hooks.json missing"
+          rm -rf $RUNNER_TEMP/e2e-compliance $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 17b: Global compliance exempts hookflow init command'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17b
+        run: |
+          # Same setup: hookflows but no repo hooks.json
+          mkdir -p $RUNNER_TEMP/e2e-compliance2/.github/hookflows
+          cat > $RUNNER_TEMP/e2e-compliance2/.github/hookflows/test.yml << 'EOF'
+          name: test-workflow
+          on:
+            hooks:
+              types: [preToolUse]
+          steps:
+            - run: echo ok
+          EOF
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          touch $HOOKFLOW_SESSION_DIR/global-only
+          # Command is hookflow init → should be exempted from compliance check
+          echo '{"toolName":"powershell","toolArgs":{"command":"gh hookflow init"},"cwd":"'$RUNNER_TEMP/e2e-compliance2'"}' \
+            | hookflow run --raw --event-type preToolUse --global --dir "$RUNNER_TEMP/e2e-compliance2" > $RUNNER_TEMP/e2e-test17b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test17b.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test17b.json
+          echo "✅ PASS: hookflow init command exempted from compliance check"
+          rm -rf $RUNNER_TEMP/e2e-compliance2 $HOOKFLOW_SESSION_DIR
+
       # ── Summary ────────────────────────────────────────────
       - name: Test summary
         if: always()
@@ -485,4 +593,6 @@ jobs:
           echo "  Test 13a-c:  Content enforcement (console.log)"
           echo "  Test 14:     Copilot CLI post-error feedback loop (conditional)"
           echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
+          echo "  Test 16a-c:  Global hooks sentinel toggle"
+          echo "  Test 17a-b:  Global compliance check"
           echo "════════════════════════════════════════"
