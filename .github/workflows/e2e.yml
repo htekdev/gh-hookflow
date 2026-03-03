@@ -175,29 +175,22 @@ jobs:
       - name: 'Test 6a: Block bad commit message (direct)'
         shell: bash
         working-directory: e2e-workspace
-        continue-on-error: true
         run: |
           echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"quick fix\""},"cwd":"'$(pwd)'"}' \
             | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test6a.json
-          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test6a.json; then
-            echo "✅ PASS: bad commit message was correctly blocked"
-          else
-            echo "⚠️ INFO: git commit detection from bash command may vary"
-          fi
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test6a.json
+          echo "✅ PASS: bad commit message was correctly blocked"
 
       - name: 'Test 6b: Allow good commit message (direct)'
         shell: bash
         working-directory: e2e-workspace
-        continue-on-error: true
         run: |
           echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"fix: resolve login issue\""},"cwd":"'$(pwd)'"}' \
             | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6b.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test6b.json
-          if grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test6b.json; then
-            echo "✅ PASS: good commit message was correctly allowed"
-          else
-            echo "⚠️ INFO: git commit detection from bash command may vary"
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test6b.json
+          echo "✅ PASS: good commit message was correctly allowed"
           fi
 
       # ── Test 8: Post-error → denyNextToolCall ─────────────
