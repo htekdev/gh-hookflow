@@ -529,8 +529,9 @@ jobs:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17
         run: |
           # Create a workspace with hookflows but NO .github/hooks/hooks.json
-          mkdir -p $RUNNER_TEMP/e2e-compliance/.github/hookflows
-          cat > $RUNNER_TEMP/e2e-compliance/.github/hookflows/test.yml << 'EOF'
+          COMPLIANCE_DIR="$RUNNER_TEMP/e2e-compliance"
+          mkdir -p "$COMPLIANCE_DIR/.github/hookflows"
+          cat > "$COMPLIANCE_DIR/.github/hookflows/test.yml" << 'EOF'
           name: test-workflow
           on:
             file:
@@ -540,13 +541,15 @@ jobs:
           EOF
           mkdir -p $HOOKFLOW_SESSION_DIR
           touch $HOOKFLOW_SESSION_DIR/global-only
-          echo '{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"'$RUNNER_TEMP/e2e-compliance'"}' \
-            | hookflow run --raw --event-type preToolUse --global --dir "$RUNNER_TEMP/e2e-compliance" > $RUNNER_TEMP/e2e-test17a.json 2>&1 || true
+          # Escape backslashes for JSON (Windows paths)
+          ESCAPED_DIR=$(echo "$COMPLIANCE_DIR" | sed 's/\\/\\\\/g')
+          echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$COMPLIANCE_DIR" > $RUNNER_TEMP/e2e-test17a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test17a.json
           grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test17a.json
           grep -q "hookflow init" $RUNNER_TEMP/e2e-test17a.json
           echo "✅ PASS: Global mode denies when repo hooks.json missing"
-          rm -rf $RUNNER_TEMP/e2e-compliance $HOOKFLOW_SESSION_DIR
+          rm -rf "$COMPLIANCE_DIR" $HOOKFLOW_SESSION_DIR
 
       - name: 'Test 17b: Global compliance exempts hookflow init command'
         shell: bash
@@ -554,8 +557,9 @@ jobs:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17b
         run: |
           # Same setup: hookflows but no repo hooks.json
-          mkdir -p $RUNNER_TEMP/e2e-compliance2/.github/hookflows
-          cat > $RUNNER_TEMP/e2e-compliance2/.github/hookflows/test.yml << 'EOF'
+          COMPLIANCE_DIR="$RUNNER_TEMP/e2e-compliance2"
+          mkdir -p "$COMPLIANCE_DIR/.github/hookflows"
+          cat > "$COMPLIANCE_DIR/.github/hookflows/test.yml" << 'EOF'
           name: test-workflow
           on:
             hooks:
@@ -565,13 +569,15 @@ jobs:
           EOF
           mkdir -p $HOOKFLOW_SESSION_DIR
           touch $HOOKFLOW_SESSION_DIR/global-only
+          # Escape backslashes for JSON (Windows paths)
+          ESCAPED_DIR=$(echo "$COMPLIANCE_DIR" | sed 's/\\/\\\\/g')
           # Command is hookflow init → should be exempted from compliance check
-          echo '{"toolName":"powershell","toolArgs":{"command":"gh hookflow init"},"cwd":"'$RUNNER_TEMP/e2e-compliance2'"}' \
-            | hookflow run --raw --event-type preToolUse --global --dir "$RUNNER_TEMP/e2e-compliance2" > $RUNNER_TEMP/e2e-test17b.json 2>&1 || true
+          echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"gh hookflow init\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$COMPLIANCE_DIR" > $RUNNER_TEMP/e2e-test17b.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test17b.json
           grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test17b.json
           echo "✅ PASS: hookflow init command exempted from compliance check"
-          rm -rf $RUNNER_TEMP/e2e-compliance2 $HOOKFLOW_SESSION_DIR
+          rm -rf "$COMPLIANCE_DIR" $HOOKFLOW_SESSION_DIR
 
       # ── Summary ────────────────────────────────────────────
       - name: Test summary
