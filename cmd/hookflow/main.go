@@ -471,12 +471,12 @@ func primitiveGuards(input []byte) *schema.WorkflowResult {
 		return nil // no command to check
 	}
 
-	// Guard 1: Block git push — must use "gh hookflow git-push" instead
+	// Guard 1: Block git push — must use hookflow_git_push MCP tool
 	if primitiveGitPushPattern.MatchString(command) {
 		return schema.NewDenyResult(
-			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead.\n\n" +
-				"Example: gh hookflow git-push origin main\n\n" +
-				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
+			"Direct git push is blocked by hookflow. Use the hookflow_git_push tool instead.\n\n" +
+				"The hookflow_git_push tool runs pre/post push workflows and tracks progress.\n\n" +
+				"IMPORTANT: Always use the hookflow_git_push tool instead of 'git push'.")
 	}
 
 	// Guard 2: Block multiple git commands in one tool call
@@ -502,11 +502,11 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 
 	// Block direct git push (belt-and-suspenders — also checked in primitiveGuards)
 	if evt.Push != nil && evt.GetLifecycle() == "pre" {
-		log.Info("blocking direct git push — use 'gh hookflow git-push' instead")
+		log.Info("blocking direct git push — use hookflow_git_push tool instead")
 		result := schema.NewDenyResult(
-			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push <args>' instead.\n\n" +
-				"Example: gh hookflow git-push origin main\n\n" +
-				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
+			"Direct git push is blocked by hookflow. Use the hookflow_git_push tool instead.\n\n" +
+				"The hookflow_git_push tool runs pre/post push workflows and tracks progress.\n\n" +
+				"IMPORTANT: Always use the hookflow_git_push tool instead of 'git push'.")
 		return outputWorkflowResult(result)
 	}
 

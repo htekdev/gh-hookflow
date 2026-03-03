@@ -320,7 +320,7 @@ jobs:
             | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test15a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test15a.json
           grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15a.json
-          grep -q "git push" $RUNNER_TEMP/e2e-test15a.json || grep -q "hookflow git-push" $RUNNER_TEMP/e2e-test15a.json
+          grep -q "hookflow_git_push" $RUNNER_TEMP/e2e-test15a.json
           echo "✅ PASS: git push blocked regardless of tool name"
 
       - name: 'Test 15b: Block multi-git commands in single call'
