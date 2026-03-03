@@ -388,6 +388,7 @@ jobs:
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test14
+          HOOKFLOW_DEBUG: "1"
         working-directory: e2e-workspace
         timeout-minutes: 5
         shell: bash
@@ -397,11 +398,26 @@ jobs:
             exit 0
           fi
           mkdir -p $HOOKFLOW_SESSION_DIR
+          # Clean any stale session errors from all session dirs
+          echo "=== Pre-flight checks ==="
+          echo "HOOKFLOW_SESSION_DIR=$HOOKFLOW_SESSION_DIR"
+          ls -la $HOOKFLOW_SESSION_DIR/ 2>/dev/null || echo "(empty)"
+          find ~/.hookflow -name "error.md" 2>/dev/null && echo "WARNING: stale session errors found" || echo "No stale errors in ~/.hookflow"
+          # Remove any stale session errors
+          find ~/.hookflow -name "error.md" -delete 2>/dev/null || true
+          echo ""
           # Single prompt that triggers two tool calls:
           # 1st: create app.config.json → post-lifecycle validation fails → session error recorded
           # 2nd: create greeting.txt → pre-lifecycle check sees session error → denied
           echo "Running Copilot CLI with a prompt that needs two file creates..."
           copilot -p "Do these two things in order: First, create a file called app.config.json with the content {\"key\": \"value\"}. Second, create a file called greeting.txt with the content Hello World." --yolo 2>&1 || true
+          echo ""
+          echo "=== Post-run diagnostics ==="
+          echo "Session dir contents:"
+          ls -la $HOOKFLOW_SESSION_DIR/ 2>/dev/null || echo "(empty or missing)"
+          find ~/.hookflow -name "error.md" 2>/dev/null && echo "Session errors found" || echo "No session errors"
+          echo "Hookflow log (last 30 lines):"
+          cat ~/.hookflow/logs/hookflow-*.log 2>/dev/null | tail -30 || echo "(no log)"
           echo ""
           echo "=== Checking results ==="
           # The config file may or may not exist (pre allows it, post fails)
