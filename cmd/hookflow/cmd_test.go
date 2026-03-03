@@ -15,6 +15,31 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/schema"
 )
 
+// TestMain isolates session state so tests don't pollute each other
+// or the user's real hookflow session directory.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "hookflow-cmd-test-session")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp session dir: %v\n", err)
+		os.Exit(1)
+	}
+	_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// clearSessionErrors removes any session error file left by previous tests.
+// Call this in tests that run post-lifecycle workflows with blocking steps
+// that may fail, to prevent cross-test contamination.
+func clearSessionErrors(t *testing.T) {
+	t.Helper()
+	sessionDir := os.Getenv("HOOKFLOW_SESSION_DIR")
+	if sessionDir != "" {
+		_ = os.Remove(filepath.Join(sessionDir, "error.md"))
+	}
+}
+
 // TestVersionCommand tests the version command execution
 func TestVersionCommand(t *testing.T) {
 	// Capture stdout
@@ -1447,6 +1472,7 @@ steps:
 
 // TestLifecyclePostMatchesPost tests that post lifecycle triggers match post events
 func TestLifecyclePostMatchesPost(t *testing.T) {
+	t.Cleanup(func() { clearSessionErrors(t) })
 	tmpDir, err := os.MkdirTemp("", "hookflow-lifecycle-post-*")
 	if err != nil {
 		t.Fatal(err)

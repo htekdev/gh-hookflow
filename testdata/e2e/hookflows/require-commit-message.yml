@@ -1,0 +1,25 @@
+# E2E Test: Require conventional commit message format
+# Commits must start with a type prefix like fix:, feat:, docs:, etc.
+
+name: Require Commit Message Format
+description: Enforces conventional commit message format (type colon prefix)
+
+on:
+  commit:
+    lifecycle: pre
+
+blocking: true
+
+steps:
+  - name: Validate commit message
+    run: |
+      $message = "${{ event.commit.message }}"
+      Write-Host "Checking commit message: $message"
+      $pattern = '^(feat|fix|docs|style|refactor|test|chore|ci|perf|build|revert)(\(.+\))?!?:\s.+'
+      if ($message -notmatch $pattern) {
+        Write-Host "BLOCKED: Commit message does not follow conventional format"
+        Write-Host "Expected: type(scope): description"
+        Write-Host "Examples: feat: add login, fix(auth): resolve token issue"
+        exit 1
+      }
+      Write-Host "Commit message format is valid"

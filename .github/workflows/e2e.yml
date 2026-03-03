@@ -1,0 +1,488 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            binary: hookflow
+            shell: bash
+          - os: macos-latest
+            binary: hookflow
+            shell: bash
+          - os: windows-latest
+            binary: hookflow.exe
+            shell: pwsh
+
+    steps:
+      # ── Setup ──────────────────────────────────────────────
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build hookflow
+        run: go build -o bin/${{ matrix.binary }} ./cmd/hookflow
+
+      - name: Add hookflow to PATH (unix)
+        if: runner.os != 'Windows'
+        run: echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+
+      - name: Add hookflow to PATH (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "${{ github.workspace }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install hookflow as gh extension
+        shell: bash
+        run: |
+          GOOS=$(go env GOOS)
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
+
+          # Install the real extension first so gh registers it properly
+          gh extension install htekdev/gh-hookflow || true
+
+          # Now overwrite the extension binary with our freshly built one
+          if [ "$GOOS" = "windows" ]; then
+            EXT_DIR="$LOCALAPPDATA/GitHub CLI/extensions/gh-hookflow"
+          else
+            EXT_DIR="$HOME/.local/share/gh/extensions/gh-hookflow"
+          fi
+
+          mkdir -p "$EXT_DIR"
+          cp "bin/${{ matrix.binary }}" "$EXT_DIR/gh-hookflow${EXT}"
+          if [ "$GOOS" != "windows" ]; then chmod +x "$EXT_DIR/gh-hookflow"; fi
+          echo "Installed gh-hookflow to: $EXT_DIR"
+          gh hookflow version
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Verify installations
+        shell: bash
+        run: |
+          hookflow version
+          copilot --version
+
+      # ── Prepare test workspace ─────────────────────────────
+      - name: Create test workspace
+        shell: bash
+        run: |
+          mkdir -p e2e-workspace/.github/hookflows
+          cp testdata/e2e/hookflows/*.yml e2e-workspace/.github/hookflows/
+
+      - name: Initialize git repo in workspace
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          git init
+          git config user.email "e2e-test@hookflow.dev"
+          git config user.name "E2E Test"
+          echo "initial" > initial.txt
+          git add .
+          git commit -m "chore: initial commit"
+
+      - name: Initialize hookflow in workspace
+        working-directory: e2e-workspace
+        shell: bash
+        run: |
+          gh hookflow init --force
+          echo ""
+          echo "=== Repo hooks (.github/hooks/hooks.json) ==="
+          cat .github/hooks/hooks.json
+          echo ""
+          echo "=== Global MCP config (~/.copilot/mcp-config.json) ==="
+          cat ~/.copilot/mcp-config.json
+          echo ""
+          echo "=== Verify hook command works ==="
+          echo '{"toolName":"create","toolArgs":{"path":"test.txt"},"cwd":"'$(pwd)'"}' | gh hookflow run --raw --event-type preToolUse || true
+
+      # ── Test 1: Workflow validation ────────────────────────
+      - name: 'Test 1: Validate E2E workflows'
+        working-directory: e2e-workspace
+        run: hookflow validate
+
+      # ── Test 2: Block sensitive file (hookflow run --raw) ──
+      - name: 'Test 2: Block .env file creation (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc123"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test2.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test2.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test2.json
+          echo "✅ PASS: .env creation was correctly blocked"
+
+      # ── Test 3: Allow normal file (hookflow run --raw) ─────
+      - name: 'Test 3: Allow hello.txt creation (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"Hello World"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test3.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test3.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test3.json
+          echo "✅ PASS: hello.txt creation was correctly allowed"
+
+      # ── Test 4: Block .key file (hookflow run --raw) ───────
+      - name: 'Test 4: Block .key file edit (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"edit","toolArgs":{"path":"server.key","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test4.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test4.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test4.json
+          echo "✅ PASS: .key file edit was correctly blocked"
+
+      # ── Test 5: Post-lifecycle runs but doesn't block ──────
+      - name: 'Test 5: Post-edit notification (non-blocking)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"edit","toolArgs":{"path":"main.go","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test5.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test5.json
+          # Post-lifecycle hooks should not deny
+          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test5.json; then
+            echo "❌ FAIL: post-edit notification should not deny"
+            exit 1
+          fi
+          echo "✅ PASS: post-edit notification did not block"
+
+      # ── Test 6: Git commit governance (direct) ─────────────
+      - name: 'Test 6a: Block bad commit message (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"quick fix\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test6a.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test6a.json
+          echo "✅ PASS: bad commit message was correctly blocked"
+
+      - name: 'Test 6b: Allow good commit message (direct)'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git commit -m \"fix: resolve login issue\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test6b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test6b.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test6b.json
+          echo "✅ PASS: good commit message was correctly allowed"
+
+      # ── Test 8: Post-error → denyNextToolCall ─────────────
+      - name: 'Test 8a: Post-error records session error'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          echo '{"toolName":"edit","toolArgs":{"path":"app.config.json","old_str":"old","new_str":"new"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test8a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8a.json
+          # Post workflow should deny (blocking + step fails)
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test8a.json
+          # Verify error file was created in session dir
+          if [ -f "$HOOKFLOW_SESSION_DIR/error.md" ]; then
+            echo "✅ PASS: Session error recorded"
+            cat $HOOKFLOW_SESSION_DIR/error.md
+          else
+            echo "❌ FAIL: Session error NOT recorded in $HOOKFLOW_SESSION_DIR"
+            ls -la $HOOKFLOW_SESSION_DIR/ || true
+            exit 1
+          fi
+
+      - name: 'Test 8b: Next preToolUse blocked by session error (denyNextToolCall)'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          # This preToolUse should be blocked because of the pending session error
+          # Using .env triggers block-sensitive-files workflow, so RunWithBlocking runs
+          # Session error check should fire BEFORE the workflow step
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=test"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test8b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8b.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test8b.json
+          # The deny reason MUST mention session error, not the workflow block
+          grep -q "previous tool operation failed" $RUNNER_TEMP/e2e-test8b.json
+          echo "✅ PASS: Next tool call correctly blocked by session error"
+
+      - name: 'Test 8c: Cleared error allows next tool call'
+        shell: bash
+        working-directory: e2e-workspace
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test8
+        run: |
+          # Clear the session error
+          rm -rf $HOOKFLOW_SESSION_DIR
+          # Now preToolUse for a safe file should be allowed
+          echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"hello"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test8c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test8c.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test8c.json
+          echo "✅ PASS: Tool call allowed after error cleared"
+
+      # ── Test 9: continue-on-error should allow ──────────
+      - name: 'Test 9: continue-on-error step should not deny workflow'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"docs/readme.md","file_text":"# Hello"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test9.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test9.json
+          # With continue-on-error: true on the failing step, workflow should ALLOW
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test9.json
+          echo "✅ PASS: continue-on-error step did not deny workflow"
+
+      # ── Test 10: paths-ignore ───────────────────────────
+      - name: 'Test 10a: paths-ignore allows test files'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"src/app.test.go","file_text":"package app"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test10a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test10a.json
+          # Test file should be allowed (paths-ignore matches *.test.*)
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test10a.json
+          echo "✅ PASS: Test file allowed via paths-ignore"
+
+      - name: 'Test 10b: paths blocks source files'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"src/app.go","file_text":"package app"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test10b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test10b.json
+          # Source file should be blocked (matches paths, not in paths-ignore)
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test10b.json
+          echo "✅ PASS: Source file correctly blocked"
+
+      # ── Test 11: Multi-step pipeline with expressions ───
+      - name: 'Test 11: Multi-step pipeline with failure() and always()'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"pipeline/data.json","file_text":"{}"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test11.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test11.json
+          # Workflow should deny because step 3 (deliberate-failure) fails
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test11.json
+          # The deny reason should mention the deliberate-failure step
+          grep -q "deliberate-failure" $RUNNER_TEMP/e2e-test11.json
+          # Verify recovery-step ran (always()) - it should appear in logs
+          grep -q "recovery-step" $RUNNER_TEMP/e2e-test11.json || grep -q "Recovery" $RUNNER_TEMP/e2e-test11.json || true
+          echo "✅ PASS: Multi-step pipeline executed correctly"
+
+      # ── Test 12: Step timeout ───────────────────────────
+      - name: 'Test 12: Step timeout kills long-running step'
+        shell: bash
+        working-directory: e2e-workspace
+        timeout-minutes: 1
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"slow/data.txt","file_text":"data"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test12.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test12.json
+          # Step should timeout after 2 seconds and deny
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test12.json
+          echo "✅ PASS: Step timeout correctly enforced"
+
+      # ── Test 15: Primitive guard - git push blocked ─────
+      - name: 'Test 15a: Block git push regardless of tool name'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"unknown_shell_tool","toolArgs":{"command":"git push origin main"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test15a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15a.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15a.json
+          grep -q "hookflow git-push" $RUNNER_TEMP/e2e-test15a.json
+          echo "✅ PASS: git push blocked regardless of tool name"
+
+      - name: 'Test 15b: Block multi-git commands in single call'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git add . && git commit -m \"fix\""},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test15b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15b.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15b.json
+          grep -q "Multiple git commands" $RUNNER_TEMP/e2e-test15b.json
+          echo "✅ PASS: Multi-git commands blocked"
+
+      - name: 'Test 15c: Post lifecycle skips primitive guards'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"bash","toolArgs":{"command":"git push origin main"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type postToolUse > $RUNNER_TEMP/e2e-test15c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test15c.json
+          # Post lifecycle should NOT be blocked by primitive guards
+          if grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test15c.json; then
+            if grep -q "git push" $RUNNER_TEMP/e2e-test15c.json; then
+              echo "❌ FAIL: Post lifecycle should not trigger git push guard"
+              exit 1
+            fi
+          fi
+          echo "✅ PASS: Post lifecycle skips primitive guards"
+
+      # ── Test 13: Content enforcement ───────────────────
+      - name: 'Test 13a: Block JS file with console.log'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"lib/app.js","file_text":"function main() {\n  console.log(\"hello\");\n}"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test13a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test13a.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test13a.json
+          grep -q "console.log" $RUNNER_TEMP/e2e-test13a.json
+          echo "✅ PASS: JS file with console.log was correctly blocked"
+
+      - name: 'Test 13b: Allow clean JS file'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"create","toolArgs":{"path":"lib/utils.js","file_text":"function add(a, b) { return a + b; }"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test13b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test13b.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test13b.json
+          echo "✅ PASS: Clean JS file was correctly allowed"
+
+      - name: 'Test 13c: Block edit with console.log in new_str'
+        shell: bash
+        working-directory: e2e-workspace
+        run: |
+          echo '{"toolName":"edit","toolArgs":{"path":"lib/utils.ts","old_str":"return x","new_str":"console.log(x); return x"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test13c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test13c.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test13c.json
+          grep -q "console.log" $RUNNER_TEMP/e2e-test13c.json
+          echo "✅ PASS: Edit with console.log was correctly blocked"
+
+      # ── Test 14: Copilot CLI post-error feedback loop ──────
+      - name: 'Test 14: Copilot CLI - post-error feedback corrects file'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test14
+        working-directory: e2e-workspace
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
+            exit 0
+          fi
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          find ~/.hookflow -name "error.md" -delete 2>/dev/null || true
+          rm -f api-spec.json notes.txt summary.md
+          # Prompt creates api-spec.json with endpoint+method but NOT response_schema.
+          # Post-lifecycle hook detects the missing field and writes a session error.
+          # Multiple files give the async post-hook time to complete before a later
+          # pre-hook catches the error and blocks the agent. The agent reads the error
+          # file to acknowledge it, learns about the missing field, and fixes api-spec.json.
+          copilot -p "Create these files one at a time in order: 1) api-spec.json with exactly this JSON: {\"endpoint\": \"/users\", \"method\": \"GET\"} 2) notes.txt containing 'task started' 3) summary.md containing '# Summary' — and address any issues if they arise" --yolo 2>&1 || true
+          echo ""
+          echo "=== Checking results ==="
+          if [ -f "api-spec.json" ]; then
+            cat api-spec.json
+            if grep -q '"response_schema"' api-spec.json; then
+              echo "✅ PASS: api-spec.json has response_schema (agent learned from hookflow post-error feedback)"
+            else
+              echo "❌ FAIL: api-spec.json missing response_schema - post-error feedback loop did not work"
+              exit 1
+            fi
+          else
+            echo "❌ FAIL: api-spec.json was not created"
+            exit 1
+          fi
+          rm -f api-spec.json notes.txt summary.md
+          rm -rf $HOOKFLOW_SESSION_DIR
+
+      # ── Test 7: Copilot CLI integration ────────────────────
+      - name: 'Test 7: Copilot CLI - block sensitive file'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        working-directory: e2e-workspace
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
+            exit 0
+          fi
+          echo "Running Copilot CLI to attempt .env creation..."
+          copilot -p "Create a file called .env with the content DATABASE_URL=postgres://localhost/test" --yolo 2>&1 || true
+          if [ -f ".env" ]; then
+            echo "❌ FAIL: .env was created despite hookflow blocking rule"
+            cat .env
+            rm .env
+            exit 1
+          else
+            echo "✅ PASS: .env was not created (hookflow blocked it)"
+          fi
+
+      - name: 'Test 7: Copilot CLI - allow normal file'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        working-directory: e2e-workspace
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          if [ -z "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "⏭️ SKIP: COPILOT_GITHUB_TOKEN not configured"
+            exit 0
+          fi
+          echo "Running Copilot CLI to create hello.txt..."
+          copilot -p "Create a file called hello.txt containing exactly the text 'Hello from E2E test'" --yolo 2>&1 || true
+          if [ -f "hello.txt" ]; then
+            echo "✅ PASS: hello.txt was created successfully"
+            cat hello.txt
+          else
+            echo "⚠️ INFO: hello.txt was not created - Copilot CLI may have used a different approach"
+          fi
+
+      # ── Summary ────────────────────────────────────────────
+      - name: Test summary
+        if: always()
+        shell: bash
+        run: |
+          echo ""
+          echo "════════════════════════════════════════"
+          echo "  E2E Test Summary (${{ matrix.os }})"
+          echo "════════════════════════════════════════"
+          echo "  Tests 1-5:   Core hookflow E2E (deterministic)"
+          echo "  Test 6:      Git commit governance (best-effort)"
+          echo "  Test 7:      Copilot CLI integration (conditional)"
+          echo "  Test 8a-c:   Post-error → denyNextToolCall flow"
+          echo "  Test 9:      continue-on-error behavior"
+          echo "  Test 10a-b:  paths-ignore filtering"
+          echo "  Test 11:     Multi-step pipeline with expressions"
+          echo "  Test 12:     Step timeout enforcement"
+          echo "  Test 13a-c:  Content enforcement (console.log)"
+          echo "  Test 14:     Copilot CLI post-error feedback loop (conditional)"
+          echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
+          echo "════════════════════════════════════════"

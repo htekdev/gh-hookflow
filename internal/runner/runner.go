@@ -26,11 +26,12 @@ type Runner struct {
 
 // StepResult contains the result of running a step
 type StepResult struct {
-	Name     string
-	Success  bool
-	Output   string
-	Error    error
-	Duration time.Duration
+	Name            string
+	Success         bool
+	Output          string
+	Error           error
+	Duration        time.Duration
+	ContinueOnError bool
 }
 
 // NewRunner creates a new step runner
@@ -132,9 +133,10 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 			shouldRun, err := r.exprCtx.EvaluateBool(step.If)
 			if err != nil {
 				results = append(results, StepResult{
-					Name:    stepName,
-					Success: false,
-					Error:   fmt.Errorf("failed to evaluate if condition: %w", err),
+					Name:            stepName,
+					Success:         false,
+					Error:           fmt.Errorf("failed to evaluate if condition: %w", err),
+					ContinueOnError: step.ContinueOnError,
 				})
 				if !step.ContinueOnError {
 					prevStepFailed = true
@@ -163,6 +165,7 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 
 		// Execute the step
 		result := r.runStep(ctx, step, stepName)
+		result.ContinueOnError = step.ContinueOnError
 		results = append(results, result)
 
 		// Update step context
@@ -186,17 +189,6 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 // If blocking=true and any step fails, returns a deny result with detailed logs
 // If blocking=false, returns an allow result even if steps fail (logs warnings instead)
 func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
-	// Check for unacknowledged errors from previous postToolUse operations
-	// If this is a preToolUse event and there's an existing error, deny immediately
-	if r.event != nil && r.event.Hook != nil && r.event.Hook.Type == "preToolUse" {
-		hasErr, err := session.HasError()
-		if err != nil {
-			log.Printf("Warning: failed to check session error state: %v", err)
-		} else if hasErr {
-			return schema.NewDenyResult("A previous tool operation failed validation. Use the hookflow_get_error MCP tool to view and acknowledge the error before continuing.")
-		}
-	}
-
 	results, err := r.Run(ctx)
 	if err != nil {
 		if r.workflow.IsBlocking() {
@@ -206,10 +198,13 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		return schema.NewAllowResult()
 	}
 
-	// Check if any step failed
+	// Build combined step output for activity logging
+	stepOutputs := r.buildStepOutputSummary(results)
+
+	// Check if any step failed (respecting continue-on-error)
 	anyStepFailed := false
 	for _, result := range results {
-		if !result.Success {
+		if !result.Success && !result.ContinueOnError {
 			anyStepFailed = true
 			break
 		}
@@ -217,7 +212,9 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 
 	// If no failures, always allow
 	if !anyStepFailed {
-		return schema.NewAllowResult()
+		result := schema.NewAllowResult()
+		result.StepOutputs = stepOutputs
+		return result
 	}
 
 	// Steps failed - decision depends on blocking mode
@@ -228,6 +225,7 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		if logFile != "" {
 			result.LogFile = logFile
 		}
+		result.StepOutputs = stepOutputs
 
 		// Record error for postToolUse workflows so preToolUse can block until acknowledged
 		if r.isPostToolUseEvent() {
@@ -243,7 +241,34 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 			log.Printf("Warning: step '%s' failed (non-blocking): %v", result.Name, result.Error)
 		}
 	}
-	return schema.NewAllowResult()
+	result := schema.NewAllowResult()
+	result.StepOutputs = stepOutputs
+	return result
+}
+
+// buildStepOutputSummary creates a combined summary of all step outputs
+func (r *Runner) buildStepOutputSummary(results []StepResult) string {
+	var sb strings.Builder
+	for _, result := range results {
+		status := "✓"
+		if !result.Success {
+			status = "✗"
+		}
+		fmt.Fprintf(&sb, "[%s] %s", status, result.Name)
+		if result.Duration > 0 {
+			fmt.Fprintf(&sb, " (%s)", result.Duration.Round(time.Millisecond))
+		}
+		sb.WriteString("\n")
+		if result.Output != "" {
+			for _, line := range strings.Split(strings.TrimSpace(result.Output), "\n") {
+				sb.WriteString("  " + line + "\n")
+			}
+		}
+		if result.Error != nil {
+			fmt.Fprintf(&sb, "  Error: %v\n", result.Error)
+		}
+	}
+	return sb.String()
 }
 
 // buildDenialWithLogs creates a detailed log file and returns the path and denial reason

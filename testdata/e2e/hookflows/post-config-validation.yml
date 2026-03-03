@@ -1,0 +1,26 @@
+# E2E Test: Post-lifecycle config validation (tests denyNextToolCall flow)
+# After a config file is edited, validates format. Failure records session error
+# so the NEXT preToolUse is blocked until error is acknowledged.
+
+name: Post Config Validation
+description: Validates config files after editing - blocks next tool call on failure
+
+on:
+  file:
+    types:
+      - edit
+      - create
+    lifecycle: post
+    paths:
+      - '**/*.config.*'
+      - '**/config.*'
+      - '**/*.cfg'
+
+blocking: true
+
+steps:
+  - name: Validate config format
+    run: |
+      Write-Host "Validating config file: ${{ event.file.path }}"
+      Write-Host "ERROR: Config validation failed - invalid format detected"
+      exit 1

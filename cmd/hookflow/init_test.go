@@ -106,9 +106,12 @@ func TestInitRepo(t *testing.T) {
 		t.Fatalf("runGlobalInit failed: %v", err)
 	}
 
-	// Run repo init
-	if err := runRepoInit(tempRepo, false); err != nil {
-		t.Fatalf("runRepoInit failed: %v", err)
+	// Run repo hooks init and scaffold init
+	if err := runRepoHooksInit(tempRepo, false); err != nil {
+		t.Fatalf("runRepoHooksInit failed: %v", err)
+	}
+	if err := runRepoScaffoldInit(tempRepo, false); err != nil {
+		t.Fatalf("runRepoScaffoldInit failed: %v", err)
 	}
 
 	// Verify .github/hookflows/example.yml exists
@@ -394,8 +397,11 @@ func TestInitRepoCreatesDirectories(t *testing.T) {
 	tempRepo := t.TempDir()
 
 	// Run repo init
-	if err := runRepoInit(tempRepo, false); err != nil {
-		t.Fatalf("runRepoInit failed: %v", err)
+	if err := runRepoHooksInit(tempRepo, false); err != nil {
+		t.Fatalf("runRepoHooksInit failed: %v", err)
+	}
+	if err := runRepoScaffoldInit(tempRepo, false); err != nil {
+		t.Fatalf("runRepoScaffoldInit failed: %v", err)
 	}
 
 	// Verify directories were created

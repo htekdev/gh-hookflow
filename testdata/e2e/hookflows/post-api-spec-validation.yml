@@ -1,0 +1,32 @@
+name: Post API Spec Validation
+description: Validates api-spec.json has all required fields after creation
+
+on:
+  file:
+    types:
+      - create
+      - edit
+    lifecycle: post
+    paths:
+      - '**/api-spec.json'
+
+blocking: true
+
+steps:
+  - name: Validate API spec fields
+    run: |
+      $filePath = "${{ event.file.path }}"
+      if (-not (Test-Path $filePath)) {
+        Write-Host "ERROR: File not found: $filePath"
+        exit 1
+      }
+      $json = Get-Content $filePath -Raw | ConvertFrom-Json
+      $missing = @()
+      if (-not $json.endpoint) { $missing += 'endpoint' }
+      if (-not $json.method) { $missing += 'method' }
+      if (-not $json.response_schema) { $missing += 'response_schema' }
+      if ($missing.Count -gt 0) {
+        Write-Host "ERROR: api-spec.json is missing required fields: $($missing -join ', '). Every API spec must include 'endpoint', 'method', and 'response_schema' fields."
+        exit 1
+      }
+      Write-Host "API spec validation passed"

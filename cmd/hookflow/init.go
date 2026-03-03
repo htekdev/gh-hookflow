@@ -14,14 +14,14 @@ var initCmd = &cobra.Command{
 	Short: "Initialize hookflow globally or for a repository",
 	Long: `Initializes hookflow configuration.
 
-By default (global setup), creates:
+Always creates:
 - ~/.copilot/hooks.json - Global hooks for preToolUse/postToolUse
 - ~/.copilot/mcp-config.json - MCP server registration
 - ~/.copilot/skills/hookflow/SKILL.md - AI agent guidance
+- .github/hooks/hooks.json - Per-repo hooks (required for Copilot CLI)
 
-With --repo flag (per-repo setup), also creates:
+With --repo flag, also creates:
 - .github/hookflows/example.yml - Example workflow
-- .github/hooks/hooks.json - sessionStart enforcement hook
 
 After running init, you can create workflows using 'hookflow create'
 or by manually creating YAML files in .github/hookflows/`,
@@ -46,7 +46,7 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringP("dir", "d", "", "Directory to initialize (default: current directory)")
 	initCmd.Flags().BoolP("force", "f", false, "Overwrite existing configuration")
-	initCmd.Flags().BoolP("repo", "r", false, "Also create per-repo configuration")
+	initCmd.Flags().BoolP("repo", "r", false, "Also create example workflows and repo scaffolding")
 }
 
 func runInit(dir string, force bool, repo bool) error {
@@ -62,10 +62,16 @@ func runInit(dir string, force bool, repo bool) error {
 		return err
 	}
 
-	// If --repo flag, also do per-repo setup
+	// Always create per-repo hooks (required for Copilot CLI to discover hookflow)
+	fmt.Println()
+	if err := runRepoHooksInit(dir, force); err != nil {
+		return err
+	}
+
+	// If --repo flag, also create example workflow and scaffolding
 	if repo {
-		fmt.Println() // Blank line between sections
-		if err := runRepoInit(dir, force); err != nil {
+		fmt.Println()
+		if err := runRepoScaffoldInit(dir, force); err != nil {
 			return err
 		}
 	}
@@ -73,7 +79,7 @@ func runInit(dir string, force bool, repo bool) error {
 	// Print completion message
 	fmt.Println("\n✓ hookflow initialized successfully!")
 	if !repo {
-		fmt.Println("\nRun 'hookflow init --repo' in a repository to add per-repo workflows.")
+		fmt.Println("\nRun 'hookflow init --repo' to also create example workflows.")
 	} else {
 		fmt.Println("\nNext steps:")
 		fmt.Println("  1. Create a workflow: hookflow create \"block edits to .env files\"")
@@ -123,11 +129,27 @@ func runGlobalInit(copilotDir string, force bool) error {
 	return nil
 }
 
-// runRepoInit creates per-repo configuration in .github/
-func runRepoInit(dir string, force bool) error {
-	fmt.Printf("Setting up per-repo configuration in %s...\n", dir)
+// runRepoHooksInit creates .github/hooks/hooks.json (always needed for Copilot CLI)
+func runRepoHooksInit(dir string, force bool) error {
+	fmt.Printf("Setting up per-repo hooks in %s...\n", dir)
 
-	// 1. Create .github/hookflows directory and example workflow
+	hooksDir := filepath.Join(dir, ".github", "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		return fmt.Errorf("failed to create hooks directory: %w", err)
+	}
+
+	hooksFile := filepath.Join(hooksDir, "hooks.json")
+	if err := mergeRepoHooksJSON(hooksFile, force); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// runRepoScaffoldInit creates example workflows and other repo scaffolding
+func runRepoScaffoldInit(dir string, force bool) error {
+	fmt.Printf("Setting up repo scaffolding in %s...\n", dir)
+
 	hookflowsDir := filepath.Join(dir, ".github", "hookflows")
 	if err := os.MkdirAll(hookflowsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create hookflows directory: %w", err)
@@ -143,17 +165,6 @@ func runRepoInit(dir string, force bool) error {
 		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", exampleWorkflow)
 	}
 
-	// 2. Create .github/hooks/hooks.json with sessionStart enforcement
-	hooksDir := filepath.Join(dir, ".github", "hooks")
-	if err := os.MkdirAll(hooksDir, 0755); err != nil {
-		return fmt.Errorf("failed to create hooks directory: %w", err)
-	}
-
-	hooksFile := filepath.Join(hooksDir, "hooks.json")
-	if err := mergeRepoHooksJSON(hooksFile, force); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -164,13 +175,13 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type preToolUse",
 		"powershell": "gh hookflow run --raw --event-type preToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type postToolUse",
 		"powershell": "gh hookflow run --raw --event-type postToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 
 	// Load existing config or create new one
@@ -228,7 +239,7 @@ func mergeGlobalHooksJSON(path string, force bool) error {
 func mergeMCPConfigJSON(path string, force bool) error {
 	// Define hookflow MCP server (uses gh extension)
 	hookflowMCP := map[string]interface{}{
-		"type":    "stdio",
+		"type":    "local",
 		"command": "gh",
 		"args":    []string{"hookflow", "mcp", "serve"},
 		"tools":   []string{"*"},
@@ -281,19 +292,19 @@ func mergeRepoHooksJSON(path string, force bool) error {
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type preToolUse",
 		"powershell": "gh hookflow run --raw --event-type preToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	hookflowPostHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       "gh hookflow run --raw --event-type postToolUse",
 		"powershell": "gh hookflow run --raw --event-type postToolUse",
-		"timeoutSec": 60,
+		"timeoutSec": 1800,
 	}
 	sessionStartHook := map[string]interface{}{
 		"type":       "command",
 		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
 		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
-		"timeoutSec": 10,
+		"timeoutSec": 1800,
 		"comment":    "Ensure gh hookflow extension is installed and configured",
 	}
 

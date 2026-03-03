@@ -14,9 +14,10 @@ import (
 
 // RawHookInput represents the raw input from a Copilot hook
 type RawHookInput struct {
-	ToolName string          `json:"toolName"`
-	ToolArgs json.RawMessage `json:"toolArgs"`
-	Cwd      string          `json:"cwd"`
+	SessionID string          `json:"sessionId"`
+	ToolName  string          `json:"toolName"`
+	ToolArgs  json.RawMessage `json:"toolArgs"`
+	Cwd       string          `json:"cwd"`
 }
 
 // ToolArgs represents parsed tool arguments
@@ -148,16 +149,14 @@ func (d *Detector) Detect(raw *RawHookInput) (*schema.Event, error) {
 
 // detectShellEvent handles shell/terminal commands
 func (d *Detector) detectShellEvent(event *schema.Event, command, cwd string) {
-	// Check for git commit
+	// Check for ALL git command types — do NOT early return so chained
+	// commands like "git commit -m 'msg'\ngit push" detect both events.
 	if IsGitCommitCommand(command) {
 		d.buildCommitEvent(event, command, cwd)
-		return
 	}
 
-	// Check for git push
 	if IsGitPushCommand(command) {
 		d.buildPushEvent(event, command, cwd)
-		return
 	}
 }
 
@@ -210,15 +209,16 @@ func (d *Detector) detectEditEvent(event *schema.Event, args *ToolArgs) {
 }
 
 // Git command detection patterns
+// All patterns treat newlines (\n) as command separators alongside &&, ||, ;
 var (
-	// Matches git commit at start or after command separators, handles flags like -C, --no-pager
-	gitCommitPattern = regexp.MustCompile(`(?:^|&&|\|\||;)\s*git\b.*\bcommit\b`)
+	// Matches git commit at start of line or after command separators (&&, ||, ;, \n)
+	gitCommitPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\bcommit\b`)
 
-	// Matches git push at start or after command separators
-	gitPushPattern = regexp.MustCompile(`(?:^|&&|\|\||;)\s*git\b.*\bpush\b`)
+	// Matches git push at start of line or after command separators
+	gitPushPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\bpush\b`)
 
-	// Matches git add at start or after command separators
-	gitAddPattern = regexp.MustCompile(`(?:^|&&|\|\||;)\s*git\b.*\badd\b`)
+	// Matches git add at start of line or after command separators
+	gitAddPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\badd\b`)
 
 	// Extracts commit message from -m flag
 	commitMessagePattern = regexp.MustCompile(`-m\s+["']([^"']+)["']|-m\s+(\S+)`)
@@ -232,32 +232,16 @@ var (
 
 // IsGitCommitCommand checks if a shell command contains a git commit
 func IsGitCommitCommand(command string) bool {
-	// Also match if command starts with git (no separator before)
-	if strings.HasPrefix(strings.TrimSpace(command), "git") {
-		if regexp.MustCompile(`^git\b.*\bcommit\b`).MatchString(strings.TrimSpace(command)) {
-			return true
-		}
-	}
 	return gitCommitPattern.MatchString(command)
 }
 
 // IsGitPushCommand checks if a shell command contains a git push
 func IsGitPushCommand(command string) bool {
-	if strings.HasPrefix(strings.TrimSpace(command), "git") {
-		if regexp.MustCompile(`^git\b.*\bpush\b`).MatchString(strings.TrimSpace(command)) {
-			return true
-		}
-	}
 	return gitPushPattern.MatchString(command)
 }
 
 // IsGitAddCommand checks if a shell command contains a git add
 func IsGitAddCommand(command string) bool {
-	if strings.HasPrefix(strings.TrimSpace(command), "git") {
-		if regexp.MustCompile(`^git\b.*\badd\b`).MatchString(strings.TrimSpace(command)) {
-			return true
-		}
-	}
 	return gitAddPattern.MatchString(command)
 }
 

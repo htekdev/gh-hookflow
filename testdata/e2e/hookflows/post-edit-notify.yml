@@ -1,0 +1,30 @@
+# E2E Test: Post-edit notification (non-blocking)
+# Demonstrates expression evaluation and post-lifecycle hooks
+
+name: Post-Edit Notification
+description: Logs file edit events after they occur (non-blocking)
+
+on:
+  file:
+    types:
+      - edit
+      - create
+    lifecycle: post
+
+blocking: false
+
+env:
+  NOTIFICATION_LEVEL: info
+
+steps:
+  - name: Log edit event
+    run: |
+      Write-Host "Post-edit notification"
+      Write-Host "File: ${{ event.file.path }}"
+      Write-Host "Action: ${{ event.file.action }}"
+      Write-Host "Level: ${{ env.NOTIFICATION_LEVEL }}"
+
+  - name: Check file type
+    if: ${{ endsWith(event.file.path, '.go') }}
+    run: |
+      Write-Host "Go file modified - consider running tests"

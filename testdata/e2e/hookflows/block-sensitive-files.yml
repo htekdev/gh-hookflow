@@ -1,0 +1,27 @@
+# E2E Test: Block sensitive file operations
+# Blocks creation/editing of sensitive files like .env, .key, .pem
+
+name: Block Sensitive Files
+description: Blocks create/edit of sensitive files (.env, .key, .pem, .secret)
+
+on:
+  file:
+    types:
+      - create
+      - edit
+    paths:
+      - '**/.env'
+      - '**/.env.*'
+      - '**/*.key'
+      - '**/*.pem'
+      - '**/*.secret'
+
+blocking: true
+
+steps:
+  - name: Deny sensitive file operation
+    run: |
+      Write-Host "BLOCKED: Sensitive file operation detected"
+      Write-Host "File: ${{ event.file.path }}"
+      Write-Host "Action: ${{ event.file.action }}"
+      exit 1

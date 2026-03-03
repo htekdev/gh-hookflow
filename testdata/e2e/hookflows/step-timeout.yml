@@ -1,0 +1,23 @@
+# E2E Test: Step timeout handling
+# Step has a 2-second timeout but tries to sleep for 30 seconds.
+# Should be killed after timeout and result in deny.
+
+name: Timeout Check
+description: Validates step timeout enforcement
+
+on:
+  file:
+    types:
+      - create
+    paths:
+      - 'slow/**'
+
+blocking: true
+
+steps:
+  - name: slow-operation
+    timeout: 2
+    run: |
+      Write-Host "Starting slow operation..."
+      Start-Sleep -Seconds 30
+      Write-Host "This should NOT appear (timeout should kill)"

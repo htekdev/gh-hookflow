@@ -1,0 +1,32 @@
+# E2E Test: Content enforcement - block banned code patterns
+# Uses expression-based content inspection to block JS/TS files
+# containing console.log statements (via event.tool.args).
+
+name: Content enforcement - no console.log
+description: Blocks JS/TS files containing console.log statements
+
+on:
+  file:
+    lifecycle: pre
+    paths:
+      - '**/*.js'
+      - '**/*.ts'
+    types:
+      - create
+      - edit
+
+blocking: true
+
+steps:
+  - name: Block console.log in edits
+    if: ${{ contains(event.tool.args.new_str, 'console.log') }}
+    run: |
+      Write-Host "console.log statements are not allowed in production code"
+      exit 1
+  - name: Block console.log in new files
+    if: ${{ contains(event.tool.args.file_text, 'console.log') }}
+    run: |
+      Write-Host "console.log statements are not allowed in new files"
+      exit 1
+  - name: Content check passed
+    run: Write-Host "Content passes enforcement rules"

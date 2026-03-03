@@ -1,0 +1,28 @@
+# E2E Test: continue-on-error behavior
+# Step 1 fails but has continue-on-error: true, so workflow should still ALLOW.
+# BUG: RunWithBlocking doesn't respect ContinueOnError in anyStepFailed check.
+
+name: Lenient Linter
+description: Lint check with continue-on-error - should allow despite lint failure
+
+on:
+  file:
+    types:
+      - create
+    paths:
+      - 'docs/**/*.md'
+
+blocking: true
+
+steps:
+  - name: optional-lint
+    continue-on-error: true
+    run: |
+      Write-Host "Linting markdown file: ${{ event.file.path }}"
+      Write-Host "WARNING: lint issue found (non-critical)"
+      exit 1
+
+  - name: required-check
+    if: ${{ always() }}
+    run: |
+      Write-Host "Required check passed - file is acceptable"

@@ -16,6 +16,7 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/logging"
 	"github.com/htekdev/gh-hookflow/internal/runner"
 	"github.com/htekdev/gh-hookflow/internal/schema"
+	"github.com/htekdev/gh-hookflow/internal/session"
 	"github.com/htekdev/gh-hookflow/internal/trigger"
 	"github.com/spf13/cobra"
 )
@@ -385,6 +386,57 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 
 	log.Debug("input length=%d", len(input))
 
+	// ── Session identity ────────────────────────────────────────────
+	// Copilot CLI includes sessionId (UUID) in every hook event.
+	// Use it to set the session directory so all downstream code
+	// (WriteError, HasError, ReadAndClearError) uses the same path.
+	var raw struct {
+		ToolName  string `json:"toolName"`
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.Unmarshal(input, &raw)
+	if raw.SessionID != "" && os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
+		if dir, err := session.SessionDirForID(raw.SessionID); err == nil {
+			_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
+			log.Debug("set session dir from sessionId: %s", dir)
+		}
+	}
+
+	// ── Error file read exemption ───────────────────────────────────
+	// When a session error blocks the agent, the deny message tells it
+	// to read the error file. Allow `view` of that file through so the
+	// agent can see the error details. The postToolUse handler will
+	// delete the file once the agent has read it.
+	if lifecycle == "pre" && raw.ToolName == "view" {
+		if isSessionErrorFileRead(input) {
+			log.Info("allowing view of session error file (primitive exemption)")
+			result := schema.NewAllowResult()
+			done(nil)
+			return outputWorkflowResult(result)
+		}
+	}
+
+	// ── Post-lifecycle error file cleanup ────────────────────────────
+	// After the agent reads the error file via `view`, clear it so the
+	// session error gate stops blocking subsequent tool calls.
+	if lifecycle == "post" && raw.ToolName == "view" {
+		if isSessionErrorFileRead(input) {
+			_, _ = session.ReadAndClearError()
+			log.Info("cleared session error after agent read the error file")
+		}
+	}
+
+	// ── Primitive guards ─────────────────────────────────────────────
+	// These run on raw input BEFORE event detection. They are critical
+	// safety checks that cannot be bypassed by tool name variations.
+	if lifecycle == "pre" {
+		if result := primitiveGuards(input); result != nil {
+			log.Info("primitive guard triggered: %s", result.PermissionDecisionReason)
+			done(nil)
+			return outputWorkflowResult(result)
+		}
+	}
+
 	// Use the event detector to parse and build the event
 	detector := event.NewDetector(nil) // nil = use real git provider
 	evt, err := detector.DetectFromRawInput(input)
@@ -404,7 +456,7 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 	// Set lifecycle from CLI flag
 	evt.Lifecycle = lifecycle
 
-	log.Debug("detected event: file=%v, tool=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, lifecycle)
+	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
 
 	// Discover and run matching workflows
 	err = runMatchingWorkflowsWithEvent(dir, evt)
@@ -412,16 +464,75 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 	return err
 }
 
+// primitiveGuards performs critical safety checks on raw hook input before
+// any event detection or workflow matching. These are non-negotiable.
+func primitiveGuards(input []byte) *schema.WorkflowResult {
+	// Parse just enough to extract the command
+	var raw struct {
+		ToolArgs json.RawMessage `json:"toolArgs"`
+	}
+	if err := json.Unmarshal(input, &raw); err != nil {
+		return nil // let event detector handle parse errors
+	}
+
+	// Extract command from toolArgs (handles command, script, code fields)
+	var args struct {
+		Command string `json:"command"`
+		Script  string `json:"script"`
+		Code    string `json:"code"`
+	}
+	if len(raw.ToolArgs) > 0 {
+		_ = json.Unmarshal(raw.ToolArgs, &args)
+	}
+	command := args.Command
+	if command == "" {
+		command = args.Script
+	}
+	if command == "" {
+		command = args.Code
+	}
+	if command == "" {
+		return nil // no command to check
+	}
+
+	// Guard 1: Block git push — must use 'gh hookflow git-push' CLI command
+	if primitiveGitPushPattern.MatchString(command) {
+		return schema.NewDenyResult(
+			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push' instead.\n\n" +
+				"Run: gh hookflow git-push <remote> <branch> [flags]\n" +
+				"Then check status: gh hookflow git-push-status <activity_id>\n\n" +
+				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
+	}
+
+	// Guard 2: Block multiple git commands in one tool call
+	if primitiveMultiGitPattern.MatchString(command) {
+		return schema.NewDenyResult(
+			"Multiple git commands in a single tool call are not allowed. " +
+				"Each git command must be its own separate tool call so hookflow can validate each one individually.")
+	}
+
+	return nil
+}
+
+var (
+	// Matches "git push" anywhere in the command (multiline safe)
+	primitiveGitPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+push\b`)
+	// Matches two or more git commands chained via &&, ;, newlines, or pipes
+	primitiveMultiGitPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+\w+.*(?:&&|;|\n).*git\s+\w+`)
+)
+
 // runMatchingWorkflowsWithEvent runs workflows with a pre-built event
 func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 	log := logging.Context("matcher")
 
-	// Block direct git push — must go through "hookflow git-push" instead
+	// Block direct git push (belt-and-suspenders — also checked in primitiveGuards)
 	if evt.Push != nil && evt.GetLifecycle() == "pre" {
-		log.Info("blocking direct git push — use 'hookflow git-push' instead")
+		log.Info("blocking direct git push — use 'gh hookflow git-push' instead")
 		result := schema.NewDenyResult(
-			"Direct git push is blocked by hookflow. Use 'hookflow git-push <args>' instead to enable pre/post push workflow validation.\n\n" +
-				"Example: hookflow git-push origin main")
+			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push' instead.\n\n" +
+				"Run: gh hookflow git-push <remote> <branch> [flags]\n" +
+				"Then check status: gh hookflow git-push-status <activity_id>\n\n" +
+				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
 		return outputWorkflowResult(result)
 	}
 
@@ -430,6 +541,27 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 		originalPath := evt.File.Path
 		evt.File.Path = normalizeFilePath(evt.File.Path, dir)
 		log.Debug("normalized path: %s -> %s", originalPath, evt.File.Path)
+	}
+
+	// Check for unacknowledged errors from previous postToolUse operations.
+	// This is a global gate — if there's a pending session error and this is
+	// a pre-lifecycle event, deny immediately regardless of workflow matching.
+	if evt.GetLifecycle() == "pre" {
+		hasErr, err := session.HasError()
+		if err != nil {
+			log.Warn("failed to check session error state: %v", err)
+		} else if hasErr {
+			log.Info("blocking pre-lifecycle event due to pending session error")
+			errorPath, _ := session.GetErrorFilePath()
+			msg := fmt.Sprintf(
+				"A previous tool operation failed validation. You must read the error file to acknowledge it before continuing.\n\n"+
+					"Error file: %s\n\n"+
+					"Use the view tool to read this file, then fix the issue and retry your operation.",
+				errorPath,
+			)
+			result := schema.NewDenyResult(msg)
+			return outputWorkflowResult(result)
+		}
 	}
 
 	// Discover workflows
@@ -800,8 +932,8 @@ func outputWorkflowResult(result *schema.WorkflowResult) error {
 // These patterns are designed to match git commands at the start of a command line
 // or after command separators (&&, ||, ;), but NOT inside quoted strings like echo "git commit"
 
-var gitCommitPattern = regexp.MustCompile(`(?:^|&&|\|\||;|&)\s*git\s+(commit|ci)\b`)
-var gitPushPattern = regexp.MustCompile(`(?:^|&&|\|\||;|&)\s*git\s+push\b`)
+var gitCommitPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;|&)\s*git\s+(commit|ci)\b`)
+var gitPushPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;|&)\s*git\s+push\b`)
 var commitMessagePattern = regexp.MustCompile(`-m\s+["']([^"']+)["']`)
 var tagPushPattern = regexp.MustCompile(`\bgit\s+push\s+\S+\s+(v[\d.]+)`)
 
@@ -868,6 +1000,52 @@ func isHookflowSelfRepair(evt *schema.Event, dir string) bool {
 	}
 	
 	return false
+}
+
+// isSessionErrorFileRead checks if the raw hook input is a `view` tool call
+// targeting the session error file. Compares the requested path against the
+// actual resolved error file path (handles HOOKFLOW_SESSION_DIR overrides).
+func isSessionErrorFileRead(input []byte) bool {
+	reqPath := extractToolArgsPath(input)
+	if reqPath == "" {
+		return false
+	}
+
+	errorPath, err := session.GetErrorFilePath()
+	if err != nil {
+		return false
+	}
+
+	// Normalize both paths: forward slashes, lowercase (Windows is case-insensitive)
+	normalize := func(p string) string {
+		return strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+	}
+	return normalize(reqPath) == normalize(errorPath)
+}
+
+// extractToolArgsPath extracts the "path" field from raw hook input toolArgs.
+// Handles both JSON object and JSON string formats (preToolUse sends toolArgs
+// as a JSON string, postToolUse sends it as a parsed object).
+func extractToolArgsPath(input []byte) string {
+	var raw struct {
+		ToolArgs json.RawMessage `json:"toolArgs"`
+	}
+	if err := json.Unmarshal(input, &raw); err != nil || len(raw.ToolArgs) == 0 {
+		return ""
+	}
+
+	var args struct {
+		Path string `json:"path"`
+	}
+	// Try direct unmarshal (toolArgs is a JSON object)
+	if err := json.Unmarshal(raw.ToolArgs, &args); err != nil {
+		// Try unwrapping string first (toolArgs is a JSON string in preToolUse)
+		var str string
+		if err2 := json.Unmarshal(raw.ToolArgs, &str); err2 == nil {
+			_ = json.Unmarshal([]byte(str), &args)
+		}
+	}
+	return args.Path
 }
 
 // normalizeFilePath converts an absolute file path to a relative path from dir

@@ -2,14 +2,30 @@
 
 A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions. Enforce governance, quality gates, and safety checks in real-time.
 
+## What Makes This Different
+
+**GitHub Copilot CLI hooks can block tool calls *before* they happen — but they can't block *after*.** Post-hook output is ignored by the Copilot CLI. This means if you validate a file after creation and it fails, you have no way to tell the agent.
+
+**gh-hookflow solves this.** It implements a **post-error feedback loop** that forces the agent to acknowledge and fix issues caught by post-lifecycle workflows:
+
+1. A post-lifecycle workflow validates content after the agent creates/edits a file
+2. If validation fails, hookflow writes an error file and **blocks all subsequent tool calls**
+3. The deny message tells the agent to read the error file for details
+4. The agent reads the error file (allowed through as a primitive exemption)
+5. The error auto-clears, and the agent can retry with the correct approach
+
+This turns post-lifecycle hooks into **blocking validators** — something the Copilot CLI hooks architecture doesn't natively support.
+
 ## Overview
 
 `gh-hookflow` lets you run "shift-left" DevOps checks during AI agent editing sessions. Instead of waiting for CI to catch issues on pull requests, you can:
 
 - **Block** dangerous edits in real-time (e.g., .env file modifications)
+- **Validate** content after creation and force the agent to fix it
 - **Lint** code as the agent writes it  
-- **Validate** configurations before commit
+- **Enforce** commit message conventions
 - **Run security scans** before code leaves the local machine
+- **Guard git push** — all pushes go through governance workflows
 
 ## Prerequisites
 
@@ -101,6 +117,8 @@ Team members can install with `gh extension install htekdev/gh-hookflow` to auto
 | `gh hookflow validate` | Validate workflow YAML files |
 | `gh hookflow test` | Test a workflow with a mock event |
 | `gh hookflow run` | Run workflows (used by hooks internally) |
+| `gh hookflow git-push` | Push with pre/post governance workflows |
+| `gh hookflow git-push-status` | Check status of an async git push |
 | `gh hookflow logs` | View gh-hookflow debug logs |
 | `gh hookflow triggers` | List available trigger types |
 | `gh hookflow version` | Show version information |
@@ -135,9 +153,26 @@ gh-hookflow integrates with [GitHub Copilot CLI hooks](https://docs.github.com/e
 │  │ postToolUse Hook                         │               │
 │  │  └─> gh hookflow run --event-type post   │               │
 │  │       └─> Runs validation/linting        │               │
+│  │       └─> If blocking step fails:        │               │
+│  │            └─> Writes session error      │               │
+│  │            └─> BLOCKS next tool call     │               │
+│  │            └─> Agent reads error file    │               │
+│  │            └─> Error auto-clears        │               │
 │  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Post-Error Feedback Loop
+
+GitHub Copilot CLI hooks ignore postToolUse output — there's no native way to give the agent feedback after a tool runs. gh-hookflow works around this with a **session error file**:
+
+1. **Post-lifecycle workflow fails** → hookflow writes `error.md` to the session directory
+2. **Next preToolUse** → hookflow detects the error file and **denies** with: *"Read the error file at {path} to acknowledge it"*
+3. **Agent reads the error file** → hookflow allows the `view` through (primitive exemption)
+4. **postToolUse for the view** → hookflow **deletes** the error file
+5. **Next tool call** → no error file exists, agent proceeds normally
+
+The agent learns what went wrong and can fix it — turning a passive post-hook into an active feedback loop.
 
 ## Usage
 
@@ -196,15 +231,38 @@ steps:
 - **`lifecycle: pre`** (default) — Runs BEFORE the tool executes. Can block/deny the operation.
 - **`lifecycle: post`** — Runs AFTER the tool executes. For validation, linting, notifications.
 
+Post-lifecycle workflows can be **blocking** — if a step fails, hookflow writes a session error that blocks all subsequent tool calls until the agent reads and acknowledges the error.
+
 ```yaml
-# Post-edit linting example
+# Post-edit validation — blocks agent until fixed
+name: Validate API Spec
+on:
+  file:
+    lifecycle: post
+    paths: ['api-spec.json']
+    types: [create, edit]
+
+blocking: true
+
+steps:
+  - name: Validate schema
+    run: |
+      $spec = Get-Content "${{ event.file.path }}" | ConvertFrom-Json
+      if (-not $spec.response_schema) {
+        Write-Error "api-spec.json must include response_schema"
+        exit 1
+      }
+```
+
+```yaml
+# Post-edit linting — non-blocking, just report
 on:
   file:
     lifecycle: post
     paths: ['**/*.ts']
     types: [edit]
 
-blocking: false  # Non-blocking - just report
+blocking: false
 
 steps:
   - name: Lint TypeScript
@@ -312,6 +370,27 @@ steps:
     run: npx eslint "${{ event.file.path }}" --fix
 ```
 
+## Primitive Guards
+
+Hookflow enforces critical safety checks **before** any workflow matching:
+
+- **`git push` is blocked** — All pushes must go through `gh hookflow git-push`, which runs pre/post governance workflows
+- **Multiple git commands in one tool call are denied** — Each git operation must be a separate tool call
+
+These guards scan raw hook input regardless of tool name and cannot be bypassed.
+
+### Git Push Governance
+
+```bash
+# Push with governance workflows
+gh hookflow git-push origin main
+
+# Check push status
+gh hookflow git-push-status <activity_id>
+```
+
+The push runs in 3 phases: pre-push workflows → git push → post-push workflows (e.g., monitor CI checks on the PR).
+
 ## Debugging
 
 Enable debug logging:
@@ -342,6 +421,38 @@ go test ./... -v
 go test ./... -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
+
+### E2E Testing
+
+The project includes end-to-end tests that validate hookflow against real Copilot CLI integration across platforms (Ubuntu, macOS, Windows).
+
+**15 test scenarios covering:**
+- Workflow validation and discovery
+- Sensitive file blocking (`.env`, `.key`, `.pem`, `.cert`)
+- Normal file operations (allow by default)
+- Post-lifecycle hooks (blocking and non-blocking)
+- Git commit governance (conventional commit format)
+- Content enforcement (e.g., block `console.log` in production code)
+- Continue-on-error step behavior
+- Paths-ignore filtering
+- Multi-step pipelines with `failure()`/`always()` expressions
+- Step timeout enforcement
+- Primitive guards (git push block, multi-git deny)
+- **Post-error feedback loop** — validates the full cycle: post-hook fails → agent is blocked → reads error → fixes the issue
+- Copilot CLI integration (`copilot -p` programmatic mode, requires `COPILOT_GITHUB_TOKEN`)
+
+**Running locally with `hookflow run --raw`:**
+```bash
+# Block test — should return permissionDecision: deny
+echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=x"},"cwd":"'$(pwd)'"}' \
+  | hookflow run --raw --event-type preToolUse
+
+# Allow test — should return permissionDecision: allow
+echo '{"toolName":"create","toolArgs":{"path":"hello.txt","file_text":"Hello"},"cwd":"'$(pwd)'"}' \
+  | hookflow run --raw --event-type preToolUse
+```
+
+**CI setup:** The E2E workflow (`.github/workflows/e2e.yml`) requires a `COPILOT_GITHUB_TOKEN` repository secret (fine-grained PAT with Copilot Requests permission) for the Copilot CLI integration tests. The direct `hookflow run --raw` tests run without any secrets.
 
 ## Related Projects
 

@@ -219,7 +219,8 @@ type FileStatus struct {
 type WorkflowResult struct {
 	PermissionDecision       string `json:"permissionDecision"` // allow, deny
 	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
-	LogFile                  string `json:"logFile,omitempty"` // Path to detailed log file
+	LogFile                  string `json:"logFile,omitempty"`    // Path to detailed log file
+	StepOutputs              string `json:"stepOutputs,omitempty"` // Combined step output for logging
 }
 
 // NewAllowResult creates an allow result
