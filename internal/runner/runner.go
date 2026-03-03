@@ -26,11 +26,12 @@ type Runner struct {
 
 // StepResult contains the result of running a step
 type StepResult struct {
-	Name     string
-	Success  bool
-	Output   string
-	Error    error
-	Duration time.Duration
+	Name            string
+	Success         bool
+	Output          string
+	Error           error
+	Duration        time.Duration
+	ContinueOnError bool
 }
 
 // NewRunner creates a new step runner
@@ -132,9 +133,10 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 			shouldRun, err := r.exprCtx.EvaluateBool(step.If)
 			if err != nil {
 				results = append(results, StepResult{
-					Name:    stepName,
-					Success: false,
-					Error:   fmt.Errorf("failed to evaluate if condition: %w", err),
+					Name:            stepName,
+					Success:         false,
+					Error:           fmt.Errorf("failed to evaluate if condition: %w", err),
+					ContinueOnError: step.ContinueOnError,
 				})
 				if !step.ContinueOnError {
 					prevStepFailed = true
@@ -163,6 +165,7 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 
 		// Execute the step
 		result := r.runStep(ctx, step, stepName)
+		result.ContinueOnError = step.ContinueOnError
 		results = append(results, result)
 
 		// Update step context
@@ -187,8 +190,8 @@ func (r *Runner) Run(ctx context.Context) ([]StepResult, error) {
 // If blocking=false, returns an allow result even if steps fail (logs warnings instead)
 func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 	// Check for unacknowledged errors from previous postToolUse operations
-	// If this is a preToolUse event and there's an existing error, deny immediately
-	if r.event != nil && r.event.Hook != nil && r.event.Hook.Type == "preToolUse" {
+	// If this is a preToolUse/pre-lifecycle event and there's an existing error, deny immediately
+	if r.event != nil && r.event.GetLifecycle() == "pre" {
 		hasErr, err := session.HasError()
 		if err != nil {
 			log.Printf("Warning: failed to check session error state: %v", err)
@@ -206,10 +209,10 @@ func (r *Runner) RunWithBlocking(ctx context.Context) *schema.WorkflowResult {
 		return schema.NewAllowResult()
 	}
 
-	// Check if any step failed
+	// Check if any step failed (respecting continue-on-error)
 	anyStepFailed := false
 	for _, result := range results {
-		if !result.Success {
+		if !result.Success && !result.ContinueOnError {
 			anyStepFailed = true
 			break
 		}
