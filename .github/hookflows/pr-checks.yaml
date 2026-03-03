@@ -20,8 +20,11 @@ steps:
 
       $prJson = gh pr list --head $branch --json number,url,title --limit 1 2>$null
       if (!$prJson -or $prJson -eq "[]") {
-        Write-Host "No open PR found for branch '$branch'. Create one with: gh pr create"
-        exit 0
+        Write-Host "No open PR found for branch '$branch'."
+        Write-Host "Create one with: gh pr create"
+        Write-Host ""
+        Write-Host "All feature branches must have an open PR before pushing."
+        exit 1
       }
 
       $pr = $prJson | ConvertFrom-Json | Select-Object -First 1
@@ -37,7 +40,7 @@ steps:
       $prJson = gh pr list --head $branch --json number,title --limit 1 2>$null
 
       if (!$prJson -or $prJson -eq "[]") {
-        exit 0
+        exit 1
       }
 
       $pr = ($prJson | ConvertFrom-Json)[0]
