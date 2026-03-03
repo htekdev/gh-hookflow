@@ -191,7 +191,6 @@ jobs:
           cat $RUNNER_TEMP/e2e-test6b.json
           grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test6b.json
           echo "✅ PASS: good commit message was correctly allowed"
-          fi
 
       # ── Test 8: Post-error → denyNextToolCall ─────────────
       - name: 'Test 8a: Post-error records session error'
