@@ -1,0 +1,49 @@
+name: Hookflow Protection
+
+description: Prevents weakening or disabling of hookflow governance files
+
+on:
+  file:
+    lifecycle: pre
+    types:
+      - edit
+      - create
+    paths:
+      - '.github/hookflows/**'
+
+blocking: true
+
+steps:
+  - name: Validate hookflow edit
+    run: |
+      $content = '${{ event.file.content }}'
+      $filePath = '${{ event.file.path }}'
+
+      # Block removal of blocking: true (changing to false or removing it)
+      if ($content -match 'blocking:\s*false') {
+        Write-Error "DENIED: Cannot set 'blocking: false' on hookflow '$filePath'. Hookflow governance workflows must remain blocking."
+        exit 1
+      }
+
+      # Block deletion of entire steps section
+      if ($content -notmatch 'steps:') {
+        Write-Error "DENIED: Cannot remove 'steps:' from hookflow '$filePath'. Hookflows must have enforcement steps."
+        exit 1
+      }
+
+      # Block suspicious patterns that weaken enforcement
+      $weakenPatterns = @(
+        'exit\s+0\s*#.*skip',
+        'exit\s+0\s*#.*bypass',
+        'exit\s+0\s*#.*disable',
+        'Write-Host.*skipping',
+        '\$true\s*#.*always.pass'
+      )
+      foreach ($pattern in $weakenPatterns) {
+        if ($content -match $pattern) {
+          Write-Error "DENIED: Suspicious pattern detected in '$filePath' that may weaken enforcement: $($matches[0])"
+          exit 1
+        }
+      }
+
+      Write-Host "Hookflow edit to '$filePath' passed protection checks."
