@@ -522,8 +522,8 @@ jobs:
           echo "✅ PASS: Sentinel toggle works correctly"
           rm -rf $HOOKFLOW_SESSION_DIR
 
-      # ── Test 17: Global compliance check ────────────────────
-      - name: 'Test 17a: Global mode denies when hookflows exist but no repo hooks.json'
+      # ── Test 17: Global compliance auto-init ────────────────────
+      - name: 'Test 17a: Global mode auto-inits when hookflows exist but no repo hooks.json'
         shell: bash
         env:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17
@@ -546,9 +546,12 @@ jobs:
           echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
             | hookflow run --raw --event-type preToolUse --global --dir "$COMPLIANCE_DIR" > $RUNNER_TEMP/e2e-test17a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test17a.json
-          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test17a.json
-          grep -q "hookflow init" $RUNNER_TEMP/e2e-test17a.json
-          echo "✅ PASS: Global mode denies when repo hooks.json missing"
+          # Should auto-init and allow (not deny)
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test17a.json
+          # Verify hooks.json was auto-created
+          test -f "$COMPLIANCE_DIR/.github/hooks/hooks.json"
+          grep -q "hookflow" "$COMPLIANCE_DIR/.github/hooks/hooks.json"
+          echo "✅ PASS: Global mode auto-inits repo hooks.json when missing"
           rm -rf "$COMPLIANCE_DIR" $HOOKFLOW_SESSION_DIR
 
       - name: 'Test 17b: Global compliance exempts hookflow init command'
@@ -600,5 +603,5 @@ jobs:
           echo "  Test 14:     Copilot CLI post-error feedback loop (conditional)"
           echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
           echo "  Test 16a-c:  Global hooks sentinel toggle"
-          echo "  Test 17a-b:  Global compliance check"
+          echo "  Test 17a-b:  Global compliance auto-init"
           echo "════════════════════════════════════════"
