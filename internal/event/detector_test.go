@@ -554,3 +554,74 @@ func TestDetectorWithRealInput(t *testing.T) {
 		t.Errorf("Cwd = %q, want Windows path", evt.Cwd)
 	}
 }
+
+// TestDetectorToolArgsStringForm tests that the detector correctly parses
+// toolArgs when it arrives as a JSON string (preToolUse format) rather than
+// a parsed JSON object (postToolUse format). This is critical because
+// evt.Tool.Args must be populated for compliance exemption checks.
+func TestDetectorToolArgsStringForm(t *testing.T) {
+	detector := NewDetector(&MockGitProvider{Branch: "main"})
+
+	tests := []struct {
+		name        string
+		input       string
+		wantCommand string
+		wantArgKeys []string
+	}{
+		{
+			name:        "toolArgs as object (postToolUse format)",
+			input:       `{"toolName":"powershell","toolArgs":{"command":"gh hookflow init"},"cwd":"/test"}`,
+			wantCommand: "gh hookflow init",
+			wantArgKeys: []string{"command"},
+		},
+		{
+			name:        "toolArgs as string (preToolUse format)",
+			input:       `{"toolName":"powershell","toolArgs":"{\"command\":\"gh hookflow init\"}","cwd":"/test"}`,
+			wantCommand: "gh hookflow init",
+			wantArgKeys: []string{"command"},
+		},
+		{
+			name:        "toolArgs string with path for view tool",
+			input:       `{"toolName":"view","toolArgs":"{\"path\":\"/home/user/.hookflow/sessions/abc/error.md\"}","cwd":"/test"}`,
+			wantCommand: "",
+			wantArgKeys: []string{"path"},
+		},
+		{
+			name:        "toolArgs string with multiple args",
+			input:       `{"toolName":"edit","toolArgs":"{\"path\":\"src/main.go\",\"old_str\":\"foo\",\"new_str\":\"bar\"}","cwd":"/test"}`,
+			wantCommand: "",
+			wantArgKeys: []string{"path", "old_str", "new_str"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evt, err := detector.DetectFromRawInput([]byte(tt.input))
+			if err != nil {
+				t.Fatalf("DetectFromRawInput() error = %v", err)
+			}
+
+			if evt.Tool == nil {
+				t.Fatal("evt.Tool should not be nil")
+			}
+
+			// Check tool args were populated
+			for _, key := range tt.wantArgKeys {
+				if _, ok := evt.Tool.Args[key]; !ok {
+					t.Errorf("evt.Tool.Args[%q] not found; Args = %v", key, evt.Tool.Args)
+				}
+			}
+
+			// Check command value if expected
+			if tt.wantCommand != "" {
+				cmd, ok := evt.Tool.Args["command"]
+				if !ok {
+					t.Fatalf("evt.Tool.Args[\"command\"] not found")
+				}
+				if cmdStr, ok := cmd.(string); !ok || cmdStr != tt.wantCommand {
+					t.Errorf("command = %v, want %q", cmd, tt.wantCommand)
+				}
+			}
+		})
+	}
+}

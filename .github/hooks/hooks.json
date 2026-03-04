@@ -4,7 +4,7 @@
       {
         "bash": "gh hookflow run --raw --event-type postToolUse",
         "powershell": "gh hookflow run --raw --event-type postToolUse",
-        "timeoutSec": 600,
+        "timeoutSec": 1800,
         "type": "command"
       }
     ],
@@ -12,16 +12,16 @@
       {
         "bash": "gh hookflow run --raw --event-type preToolUse",
         "powershell": "gh hookflow run --raw --event-type preToolUse",
-        "timeoutSec": 600,
+        "timeoutSec": 1800,
         "type": "command"
       }
     ],
     "sessionStart": [
       {
-        "bash": "gh hookflow check-setup || echo '{\"systemMessage\":\"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow \u0026\u0026 gh hookflow init\"}'",
-        "comment": "Ensure gh hookflow extension is installed and configured",
-        "powershell": "gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{\"systemMessage\":\"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init\"}' }",
-        "timeoutSec": 600,
+        "bash": "gh hookflow check-setup || { gh extension install htekdev/gh-hookflow \u0026\u0026 gh hookflow init; }",
+        "comment": "Run setup check; if it fails, install the extension and init global settings",
+        "powershell": "gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { gh extension install htekdev/gh-hookflow; gh hookflow init }",
+        "timeoutSec": 1800,
         "type": "command"
       }
     ]

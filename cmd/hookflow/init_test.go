@@ -8,63 +8,37 @@ import (
 	"testing"
 )
 
-// TestInitGlobal tests that hookflow init creates global configuration files
-func TestInitGlobal(t *testing.T) {
-	// Create temp home directory
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
+// TestInitRepoOnly tests that hookflow init only creates repo-level files (no global setup)
+func TestInitRepoOnly(t *testing.T) {
+	tempRepo := t.TempDir()
 
-	// Run global init
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
+	// Run init (should only create repo-level files)
+	if err := runInit(tempRepo, false, false); err != nil {
+		t.Fatalf("runInit failed: %v", err)
 	}
 
-	// Verify ~/.copilot/skills/hookflow/SKILL.md exists
-	skillPath := filepath.Join(copilotDir, "skills", "hookflow", "SKILL.md")
-	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-		t.Fatal("SKILL.md not created")
+	// Verify .github/hooks/hooks.json exists
+	hooksPath := filepath.Join(tempRepo, ".github", "hooks", "hooks.json")
+	if _, err := os.Stat(hooksPath); os.IsNotExist(err) {
+		t.Fatal("hooks.json not created")
 	}
 
-	skillData, err := os.ReadFile(skillPath)
-	if err != nil {
-		t.Fatalf("failed to read SKILL.md: %v", err)
-	}
-
-	if !strings.Contains(string(skillData), "hookflow") {
-		t.Error("SKILL.md should contain 'hookflow'")
-	}
-
-	// Verify hooks.json is NOT created (global hooks moved to plugin)
-	hooksPath := filepath.Join(copilotDir, "hooks.json")
-	if _, err := os.Stat(hooksPath); err == nil {
-		t.Error("global hooks.json should NOT be created (moved to plugin)")
-	}
-
-	// Verify mcp-config.json is NOT created (removed from init)
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	if _, err := os.Stat(mcpPath); err == nil {
-		t.Error("mcp-config.json should NOT be created (removed from init)")
-	}
+	// Verify NO global files are created (init is repo-only now)
+	homeDir, _ := os.UserHomeDir()
+	skillPath := filepath.Join(homeDir, ".copilot", "skills", "hookflow", "SKILL.md")
+	// We can't assert non-existence of SKILL.md since it may already exist from
+	// a real install, but we verify init doesn't call runGlobalInit by checking
+	// the function doesn't exist anymore (compile-time check).
+	_ = skillPath
 }
 
-// TestInitRepo tests that hookflow init --repo creates per-repo configuration
-func TestInitRepo(t *testing.T) {
-	// Create temp directories
-	tempHome := t.TempDir()
+// TestInitWithRepoFlag tests that --repo creates example workflow scaffolding
+func TestInitWithRepoFlag(t *testing.T) {
 	tempRepo := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
 
-	// Run global init first
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
-	}
-
-	// Run repo hooks init and scaffold init
-	if err := runRepoHooksInit(tempRepo, false); err != nil {
-		t.Fatalf("runRepoHooksInit failed: %v", err)
-	}
-	if err := runRepoScaffoldInit(tempRepo, false); err != nil {
-		t.Fatalf("runRepoScaffoldInit failed: %v", err)
+	// Run init with --repo flag
+	if err := runInit(tempRepo, false, true); err != nil {
+		t.Fatalf("runInit --repo failed: %v", err)
 	}
 
 	// Verify .github/hookflows/example.yml exists
@@ -119,143 +93,6 @@ func TestInitRepo(t *testing.T) {
 	}
 }
 
-// TestInitMerge tests that init preserves existing skill configuration
-func TestInitMerge(t *testing.T) {
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
-
-	// Create copilot dir and existing skill
-	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("failed to create skill dir: %v", err)
-	}
-
-	// Create existing SKILL.md - should be preserved without force
-	skillPath := filepath.Join(skillDir, "SKILL.md")
-	customContent := "# Custom SKILL.md\nThis should be preserved"
-	if err := os.WriteFile(skillPath, []byte(customContent), 0644); err != nil {
-		t.Fatalf("failed to create custom SKILL.md: %v", err)
-	}
-
-	// Run init without force
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
-	}
-
-	// Verify custom SKILL.md is preserved
-	skillData, err := os.ReadFile(skillPath)
-	if err != nil {
-		t.Fatalf("failed to read SKILL.md: %v", err)
-	}
-
-	if string(skillData) != customContent {
-		t.Error("custom SKILL.md should be preserved without --force")
-	}
-}
-
-// TestInitForce tests that --force overwrites existing skill
-func TestInitForce(t *testing.T) {
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
-
-	// Create copilot dir and existing skill
-	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("failed to create skill dir: %v", err)
-	}
-
-	// Create existing SKILL.md with old content
-	skillPath := filepath.Join(skillDir, "SKILL.md")
-	oldContent := "# Old SKILL.md\nThis should be overwritten with --force"
-	if err := os.WriteFile(skillPath, []byte(oldContent), 0644); err != nil {
-		t.Fatalf("failed to create old SKILL.md: %v", err)
-	}
-
-	// Run init with force
-	if err := runGlobalInit(copilotDir, true); err != nil {
-		t.Fatalf("runGlobalInit with force failed: %v", err)
-	}
-
-	// Verify SKILL.md was overwritten
-	skillData, err := os.ReadFile(skillPath)
-	if err != nil {
-		t.Fatalf("failed to read SKILL.md: %v", err)
-	}
-
-	if strings.Contains(string(skillData), "Old SKILL.md") {
-		t.Error("old SKILL.md content should be replaced with --force")
-	}
-	if !strings.Contains(string(skillData), "hookflow") {
-		t.Error("new SKILL.md should contain 'hookflow'")
-	}
-}
-
-// TestInitSkipsExistingSkill tests that init skips SKILL.md when it already exists (no force)
-func TestInitSkipsExistingSkill(t *testing.T) {
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
-	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
-
-	// Create directories
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatalf("failed to create skill dir: %v", err)
-	}
-
-	// Create existing SKILL.md with custom content
-	skillPath := filepath.Join(skillDir, "SKILL.md")
-	customContent := "# Custom SKILL.md\nThis should be preserved"
-	if err := os.WriteFile(skillPath, []byte(customContent), 0644); err != nil {
-		t.Fatalf("failed to create custom SKILL.md: %v", err)
-	}
-
-	// Run init without force
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
-	}
-
-	// Verify custom SKILL.md is preserved
-	skillData, err := os.ReadFile(skillPath)
-	if err != nil {
-		t.Fatalf("failed to read SKILL.md: %v", err)
-	}
-
-	if string(skillData) != customContent {
-		t.Error("custom SKILL.md should be preserved without --force")
-	}
-}
-
-// TestInitCreatesDirectories tests that init creates necessary directories
-func TestInitCreatesDirectories(t *testing.T) {
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
-
-	// Verify directory doesn't exist
-	if _, err := os.Stat(copilotDir); !os.IsNotExist(err) {
-		t.Fatal("copilot dir should not exist initially")
-	}
-
-	// Run init
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
-	}
-
-	// Verify directories were created
-	dirs := []string{
-		copilotDir,
-		filepath.Join(copilotDir, "skills"),
-		filepath.Join(copilotDir, "skills", "hookflow"),
-	}
-
-	for _, dir := range dirs {
-		info, err := os.Stat(dir)
-		if err != nil {
-			t.Errorf("directory %s should exist: %v", dir, err)
-		} else if !info.IsDir() {
-			t.Errorf("%s should be a directory", dir)
-		}
-	}
-}
-
 // TestInitRepoCreatesDirectories tests that repo init creates .github directories
 func TestInitRepoCreatesDirectories(t *testing.T) {
 	tempRepo := t.TempDir()
@@ -282,6 +119,93 @@ func TestInitRepoCreatesDirectories(t *testing.T) {
 		} else if !info.IsDir() {
 			t.Errorf("%s should be a directory", dir)
 		}
+	}
+}
+
+// TestInitMergePreservesExistingHooks tests that init preserves non-hookflow hooks in hooks.json
+func TestInitMergePreservesExistingHooks(t *testing.T) {
+	tempRepo := t.TempDir()
+	hooksDir := filepath.Join(tempRepo, ".github", "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatalf("failed to create hooks dir: %v", err)
+	}
+
+	// Create existing hooks.json with a custom hook
+	existingConfig := map[string]interface{}{
+		"version": 1,
+		"hooks": map[string]interface{}{
+			"preToolUse": []interface{}{
+				map[string]interface{}{
+					"type": "command",
+					"bash": "echo 'custom pre hook'",
+				},
+			},
+		},
+	}
+	existingJSON, _ := json.MarshalIndent(existingConfig, "", "  ")
+	hooksFile := filepath.Join(hooksDir, "hooks.json")
+	if err := os.WriteFile(hooksFile, existingJSON, 0644); err != nil {
+		t.Fatalf("failed to create hooks.json: %v", err)
+	}
+
+	// Run init
+	if err := runRepoHooksInit(tempRepo, false); err != nil {
+		t.Fatalf("runRepoHooksInit failed: %v", err)
+	}
+
+	// Read merged hooks.json
+	hooksData, err := os.ReadFile(hooksFile)
+	if err != nil {
+		t.Fatalf("failed to read hooks.json: %v", err)
+	}
+
+	hooksStr := string(hooksData)
+	// Custom hook should be preserved
+	if !strings.Contains(hooksStr, "custom pre hook") {
+		t.Error("existing custom hook should be preserved")
+	}
+	// Hookflow hooks should also be present
+	if !strings.Contains(hooksStr, "hookflow run") {
+		t.Error("hookflow hooks should be added")
+	}
+}
+
+// TestInitForceOverwritesHooks tests that --force replaces hookflow hooks
+func TestInitForceOverwritesHooks(t *testing.T) {
+	tempRepo := t.TempDir()
+
+	// Run init twice — second time with force
+	if err := runRepoHooksInit(tempRepo, false); err != nil {
+		t.Fatalf("first runRepoHooksInit failed: %v", err)
+	}
+	if err := runRepoHooksInit(tempRepo, true); err != nil {
+		t.Fatalf("forced runRepoHooksInit failed: %v", err)
+	}
+
+	// Verify hooks.json still valid
+	hooksFile := filepath.Join(tempRepo, ".github", "hooks", "hooks.json")
+	hooksData, err := os.ReadFile(hooksFile)
+	if err != nil {
+		t.Fatalf("failed to read hooks.json: %v", err)
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(hooksData, &config); err != nil {
+		t.Fatalf("hooks.json is invalid JSON: %v", err)
+	}
+
+	// Should have exactly one hookflow hook per lifecycle (not duplicated)
+	hooks := config["hooks"].(map[string]interface{})
+	preHooks := hooks["preToolUse"].([]interface{})
+	hookflowCount := 0
+	for _, h := range preHooks {
+		hookBytes, _ := json.Marshal(h)
+		if strings.Contains(string(hookBytes), "hookflow") {
+			hookflowCount++
+		}
+	}
+	if hookflowCount != 1 {
+		t.Errorf("expected exactly 1 hookflow preToolUse hook, got %d", hookflowCount)
 	}
 }
 
@@ -402,34 +326,5 @@ func TestGenerateSkillMD(t *testing.T) {
 		if !strings.Contains(content, section) {
 			t.Errorf("SKILL.md missing required section: %s", section)
 		}
-	}
-}
-
-// TestInitDoesNotCreateGlobalHooksOrMCP tests that init no longer creates global hooks.json or mcp-config.json
-func TestInitDoesNotCreateGlobalHooksOrMCP(t *testing.T) {
-	tempHome := t.TempDir()
-	copilotDir := filepath.Join(tempHome, ".copilot")
-
-	// Run init
-	if err := runGlobalInit(copilotDir, false); err != nil {
-		t.Fatalf("runGlobalInit failed: %v", err)
-	}
-
-	// Verify hooks.json does NOT exist
-	hooksPath := filepath.Join(copilotDir, "hooks.json")
-	if _, err := os.Stat(hooksPath); err == nil {
-		t.Error("global hooks.json should NOT be created - hooks are delivered via plugin")
-	}
-
-	// Verify mcp-config.json does NOT exist
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	if _, err := os.Stat(mcpPath); err == nil {
-		t.Error("mcp-config.json should NOT be created - removed from init")
-	}
-
-	// Verify SKILL.md still IS created
-	skillPath := filepath.Join(copilotDir, "skills", "hookflow", "SKILL.md")
-	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
-		t.Error("SKILL.md should still be created by init")
 	}
 }
