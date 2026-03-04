@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -68,14 +67,8 @@ func runGitPush(dir string, gitArgs []string) error {
 	}
 	log.Info("created activity %s for git push %v", act.ID, gitArgs)
 
-	// Return activity ID immediately, then run push in background
-	out := map[string]interface{}{
-		"activity_id": act.ID,
-		"status":      "running",
-		"message":     fmt.Sprintf("Git push has started. You MUST now call 'gh hookflow git-push-status %s' to check progress. You are NOT done — do NOT report success or failure until you have checked the status.", act.ID),
-	}
-	jsonBytes, _ := json.MarshalIndent(out, "", "  ")
-	fmt.Println(string(jsonBytes))
+	// Print agent-directive message immediately
+	fmt.Printf("Git push has started. You MUST now call 'gh hookflow git-push-status %s' to check progress. You are NOT done — do NOT report success or failure until you have checked the status.\n", act.ID)
 
 	// Run synchronously — the CLI process stays alive until done
 	resp := push.Run(dir, gitArgs, act, true)

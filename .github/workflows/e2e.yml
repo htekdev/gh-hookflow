@@ -465,61 +465,63 @@ jobs:
             echo "⚠️ INFO: hello.txt was not created - Copilot CLI may have used a different approach"
           fi
 
-      # ── Test 16: Global hooks sentinel toggle ─────────────
-      - name: 'Test 16a: Global flag skips when no sentinel (repo hooks active)'
+      # ── Test 16: Global hooks repo-hooks-active sentinel ──
+      - name: 'Test 16a: Global flag processes when no repo-hooks-active marker'
         shell: bash
         working-directory: e2e-workspace
         env:
-          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16a
         run: |
           mkdir -p $HOOKFLOW_SESSION_DIR
-          # No sentinel file exists → --global should skip and allow
+          # No repo-hooks-active marker → global is the only handler → should process
+          # .env should be blocked by block-sensitive-files workflow
           echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc"},"cwd":"'$(pwd)'"}' \
             | hookflow run --raw --event-type preToolUse --global > $RUNNER_TEMP/e2e-test16a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test16a.json
-          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test16a.json
-          echo "✅ PASS: Global mode skips processing when no sentinel (repo hooks active)"
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test16a.json
+          echo "✅ PASS: Global mode processes events when no repo-hooks-active marker"
+          rm -rf $HOOKFLOW_SESSION_DIR
 
-      - name: 'Test 16b: Global flag processes when sentinel exists (global-only)'
+      - name: 'Test 16b: Global flag skips when repo-hooks-active marker exists'
         shell: bash
         working-directory: e2e-workspace
         env:
-          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16b
         run: |
           mkdir -p $HOOKFLOW_SESSION_DIR
-          # Create sentinel → global-only mode
-          touch $HOOKFLOW_SESSION_DIR/global-only
-          # .env should now be blocked by block-sensitive-files workflow
+          # Create repo-hooks-active marker → repo hooks already handled it → global skips
+          touch $HOOKFLOW_SESSION_DIR/repo-hooks-active
+          # .env would normally be blocked, but global should skip entirely
           echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc"},"cwd":"'$(pwd)'"}' \
             | hookflow run --raw --event-type preToolUse --global > $RUNNER_TEMP/e2e-test16b.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test16b.json
-          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test16b.json
-          echo "✅ PASS: Global mode processes events when sentinel exists"
-          rm -f $HOOKFLOW_SESSION_DIR/global-only
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test16b.json
+          echo "✅ PASS: Global mode skips when repo-hooks-active marker exists"
+          rm -rf $HOOKFLOW_SESSION_DIR
 
-      - name: 'Test 16c: Sentinel toggle creates then deletes'
+      - name: 'Test 16c: Repo hooks create the repo-hooks-active marker'
         shell: bash
+        working-directory: e2e-workspace
         env:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test16c
         run: |
           mkdir -p $HOOKFLOW_SESSION_DIR
-          # First call creates sentinel
-          echo '{}' | hookflow check-setup 2>&1 || true
-          if [ -f "$HOOKFLOW_SESSION_DIR/global-only" ]; then
-            echo "✅ First call created sentinel"
+          # Running WITHOUT --global (repo hooks mode) should create the marker
+          echo '{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse > $RUNNER_TEMP/e2e-test16c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test16c.json
+          if [ -f "$HOOKFLOW_SESSION_DIR/repo-hooks-active" ]; then
+            echo "✅ Repo hooks created marker"
           else
-            echo "❌ FAIL: First call did not create sentinel"
+            echo "❌ FAIL: Repo hooks did not create repo-hooks-active marker"
             exit 1
           fi
-          # Second call deletes sentinel
-          echo '{}' | hookflow check-setup 2>&1 || true
-          if [ ! -f "$HOOKFLOW_SESSION_DIR/global-only" ]; then
-            echo "✅ Second call deleted sentinel (toggle works)"
-          else
-            echo "❌ FAIL: Second call did not delete sentinel"
-            exit 1
-          fi
-          echo "✅ PASS: Sentinel toggle works correctly"
+          # Now --global should skip because marker exists
+          echo '{"toolName":"create","toolArgs":{"path":".env","file_text":"SECRET=abc"},"cwd":"'$(pwd)'"}' \
+            | hookflow run --raw --event-type preToolUse --global > $RUNNER_TEMP/e2e-test16c-global.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test16c-global.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test16c-global.json
+          echo "✅ PASS: Repo hooks marker prevents global double-processing"
           rm -rf $HOOKFLOW_SESSION_DIR
 
       # ── Test 17: Global compliance auto-init ────────────────────
@@ -540,7 +542,7 @@ jobs:
             - run: echo ok
           EOF
           mkdir -p $HOOKFLOW_SESSION_DIR
-          touch $HOOKFLOW_SESSION_DIR/global-only
+          # No repo-hooks-active marker → global mode processes
           # Escape backslashes for JSON (Windows paths)
           ESCAPED_DIR=$(echo "$COMPLIANCE_DIR" | sed 's/\\/\\\\/g')
           echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
@@ -571,7 +573,7 @@ jobs:
             - run: echo ok
           EOF
           mkdir -p $HOOKFLOW_SESSION_DIR
-          touch $HOOKFLOW_SESSION_DIR/global-only
+          # No repo-hooks-active marker → global mode processes
           # Escape backslashes for JSON (Windows paths)
           ESCAPED_DIR=$(echo "$COMPLIANCE_DIR" | sed 's/\\/\\\\/g')
           # Command is hookflow init → should be exempted from compliance check

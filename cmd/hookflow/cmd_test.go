@@ -3933,9 +3933,7 @@ defer func() { _ = os.RemoveAll(tmpDir) }()
 sessionDir := t.TempDir()
 t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
 
-if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
-t.Fatal(err)
-}
+// No repo-hooks-active marker → global mode processes events
 
 workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
 if err := os.MkdirAll(workflowDir, 0755); err != nil {
@@ -4000,9 +3998,7 @@ defer func() { _ = os.RemoveAll(tmpDir) }()
 sessionDir := t.TempDir()
 t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
 
-if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
-t.Fatal(err)
-}
+// No repo-hooks-active marker → global mode processes events
 
 workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
 if err := os.MkdirAll(workflowDir, 0755); err != nil {
