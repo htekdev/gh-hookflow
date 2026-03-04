@@ -2097,6 +2097,42 @@ func TestEventTypeToLifecycle(t *testing.T) {
 	}
 }
 
+// TestNormalizeMSYSPath tests conversion of MSYS/Git-bash paths to Windows paths
+func TestNormalizeMSYSPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "MSYS drive path", input: "/d/a/repo", expected: "D:/a/repo"},
+		{name: "MSYS lowercase drive", input: "/c/Users/test", expected: "C:/Users/test"},
+		{name: "MSYS uppercase drive", input: "/C/Users/test", expected: "C:/Users/test"},
+		{name: "MSYS drive root", input: "/d/", expected: "D:/"},
+		{name: "MSYS bare drive", input: "/d", expected: "D:/"},
+		{name: "not MSYS - regular absolute", input: "/home/user/repo", expected: "/home/user/repo"},
+		{name: "not MSYS - Windows native", input: "D:\\a\\repo", expected: "D:\\a\\repo"},
+		{name: "not MSYS - Windows forward slash", input: "D:/a/repo", expected: "D:/a/repo"},
+		{name: "not MSYS - relative", input: "src/main.go", expected: "src/main.go"},
+		{name: "empty string", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeMSYSPath(tt.input)
+			if runtime.GOOS == "windows" {
+				if result != tt.expected {
+					t.Errorf("normalizeMSYSPath(%q) = %q, want %q", tt.input, result, tt.expected)
+				}
+			} else {
+				// On non-Windows, all paths should pass through unchanged
+				if result != tt.input {
+					t.Errorf("normalizeMSYSPath(%q) = %q, want %q (no-op on non-Windows)", tt.input, result, tt.input)
+				}
+			}
+		})
+	}
+}
+
 // TestNormalizeFilePath tests file path normalization for workflow matching
 func TestNormalizeFilePath(t *testing.T) {
 	tests := []struct {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -411,7 +412,7 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	// global/plugin hooks where the process cwd may differ from the
 	// actual repo root.
 	if raw.Cwd != "" {
-		dir = raw.Cwd
+		dir = normalizeMSYSPath(raw.Cwd)
 		log.Debug("using hook input cwd as dir: %s", dir)
 	}
 
@@ -1139,6 +1140,26 @@ func extractToolArgsPath(input []byte) string {
 }
 
 // normalizeFilePath converts an absolute file path to a relative path from dir
+// normalizeMSYSPath converts MSYS/Git-bash style paths to native Windows paths.
+// On Windows, bash's $(pwd) returns paths like /d/a/repo instead of D:/a/repo.
+// These MSYS paths are invalid for Go's os/filepath functions, so we convert them.
+// On non-Windows systems this is a no-op.
+func normalizeMSYSPath(p string) string {
+	if runtime.GOOS != "windows" {
+		return p
+	}
+	// Match /X/ or /X where X is a single drive letter
+	if len(p) >= 2 && p[0] == '/' && ((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z')) {
+		if len(p) == 2 {
+			return strings.ToUpper(string(p[1])) + ":/"
+		}
+		if p[2] == '/' {
+			return strings.ToUpper(string(p[1])) + ":" + p[2:]
+		}
+	}
+	return p
+}
+
 // This ensures workflow path patterns (like 'plugin.json') match correctly
 func normalizeFilePath(filePath, dir string) string {
 	// Normalize path separators for cross-platform compatibility
