@@ -584,6 +584,90 @@ jobs:
           echo "✅ PASS: hookflow init command exempted from compliance check"
           rm -rf "$COMPLIANCE_DIR" $HOOKFLOW_SESSION_DIR
 
+      # ── Test 18: Global auto-init scenarios ─────────────────
+      - name: 'Test 18a: No hookflows, no hooks.json → global allows, no hooks.json created'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test18a
+        run: |
+          EMPTY_DIR="$RUNNER_TEMP/e2e-empty-repo"
+          mkdir -p "$EMPTY_DIR"
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          ESCAPED_DIR=$(echo "$EMPTY_DIR" | sed 's/\\/\\\\/g')
+          echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$EMPTY_DIR" > $RUNNER_TEMP/e2e-test18a.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test18a.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test18a.json
+          # hooks.json must NOT be created — nothing to init for
+          if [ -f "$EMPTY_DIR/.github/hooks/hooks.json" ]; then
+            echo "❌ FAIL: hooks.json should not exist when there are no hookflows"
+            exit 1
+          fi
+          echo "✅ PASS: No hookflows → global allows, no hooks.json created"
+          rm -rf "$EMPTY_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 18b: Hookflows exist but no hooks.json → auto-init creates hooks.json'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test18b
+        run: |
+          AUTOINIT_DIR="$RUNNER_TEMP/e2e-autoinit"
+          mkdir -p "$AUTOINIT_DIR/.github/hookflows"
+          cat > "$AUTOINIT_DIR/.github/hookflows/test.yml" << 'EOF'
+          name: test-workflow
+          on:
+            file:
+              paths: ["**"]
+          steps:
+            - run: echo ok
+          EOF
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          ESCAPED_DIR=$(echo "$AUTOINIT_DIR" | sed 's/\\/\\\\/g')
+          echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$AUTOINIT_DIR" > $RUNNER_TEMP/e2e-test18b.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test18b.json
+          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test18b.json
+          # hooks.json must now exist with hookflow entries
+          test -f "$AUTOINIT_DIR/.github/hooks/hooks.json"
+          grep -q "hookflow" "$AUTOINIT_DIR/.github/hooks/hooks.json"
+          echo "✅ PASS: Hookflows exist → auto-init creates hooks.json"
+          rm -rf "$AUTOINIT_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 18c: Hookflows + hooks.json but no repo-active sentinel → global processes and blocks'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test18c
+        run: |
+          # hooks.json was just created in-session, Copilot CLI hasn't re-read it
+          # so repo hooks aren't firing yet — only global hooks are active
+          BLOCK_DIR="$RUNNER_TEMP/e2e-block-test"
+          mkdir -p "$BLOCK_DIR/.github/hookflows"
+          cat > "$BLOCK_DIR/.github/hookflows/block-env.yml" << 'EOF'
+          name: Block Env Files
+          on:
+            file:
+              paths: ["**/.env*"]
+              types: [create, edit]
+          blocking: true
+          steps:
+            - name: Deny
+              run: |
+                echo "BLOCKED: .env files not allowed"
+                exit 1
+          EOF
+          mkdir -p "$BLOCK_DIR/.github/hooks"
+          echo '{"version":1,"hooks":{"preToolUse":[{"bash":"gh hookflow run --raw --event-type preToolUse"}]}}' \
+            > "$BLOCK_DIR/.github/hooks/hooks.json"
+          # Fresh session dir — NO repo-hooks-active sentinel
+          mkdir -p $HOOKFLOW_SESSION_DIR
+          ESCAPED_DIR=$(echo "$BLOCK_DIR" | sed 's/\\/\\\\/g')
+          echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\".env\",\"file_text\":\"SECRET=abc\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$BLOCK_DIR" > $RUNNER_TEMP/e2e-test18c.json 2>&1 || true
+          cat $RUNNER_TEMP/e2e-test18c.json
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test18c.json
+          echo "✅ PASS: Hookflows + hooks.json but no sentinel → global processes and blocks"
+          rm -rf "$BLOCK_DIR" $HOOKFLOW_SESSION_DIR
+
       # ── Summary ────────────────────────────────────────────
       - name: Test summary
         if: always()
@@ -606,4 +690,5 @@ jobs:
           echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
           echo "  Test 16a-c:  Global hooks sentinel toggle"
           echo "  Test 17a-b:  Global compliance auto-init"
+          echo "  Test 18a-c:  Global auto-init scenarios"
           echo "════════════════════════════════════════"
