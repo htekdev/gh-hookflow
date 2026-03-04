@@ -112,8 +112,8 @@ jobs:
           echo "=== Repo hooks (.github/hooks/hooks.json) ==="
           cat .github/hooks/hooks.json
           echo ""
-          echo "=== Global MCP config (~/.copilot/mcp-config.json) ==="
-          cat ~/.copilot/mcp-config.json
+          echo "=== Global skill file (~/.copilot/skills/hookflow/SKILL.md) ==="
+          test -f ~/.copilot/skills/hookflow/SKILL.md && echo "✓ SKILL.md exists" || echo "✗ SKILL.md missing"
           echo ""
           echo "=== Verify hook command works ==="
           echo '{"toolName":"create","toolArgs":{"path":"test.txt"},"cwd":"'$(pwd)'"}' | gh hookflow run --raw --event-type preToolUse || true
