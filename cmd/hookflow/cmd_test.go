@@ -4259,3 +4259,99 @@ if _, statErr := os.Stat(processHooksFile); !os.IsNotExist(statErr) {
 t.Error("hooks.json should NOT be created in the process cwd")
 }
 }
+
+// TestPrimitiveGuardsWithStringToolArgs tests that primitive guards work correctly
+// when toolArgs is a JSON string (preToolUse format) rather than a parsed object.
+func TestPrimitiveGuardsWithStringToolArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantDeny bool
+	}{
+		{
+			name:     "git push as object toolArgs",
+			input:    `{"toolName":"powershell","toolArgs":{"command":"git push origin main"},"cwd":"/test"}`,
+			wantDeny: true,
+		},
+		{
+			name:     "git push as string toolArgs (preToolUse format)",
+			input:    `{"toolName":"powershell","toolArgs":"{\"command\":\"git push origin main\"}","cwd":"/test"}`,
+			wantDeny: true,
+		},
+		{
+			name:     "safe command as string toolArgs",
+			input:    `{"toolName":"powershell","toolArgs":"{\"command\":\"gh hookflow init\"}","cwd":"/test"}`,
+			wantDeny: false,
+		},
+		{
+			name:     "multi git as string toolArgs",
+			input:    `{"toolName":"powershell","toolArgs":"{\"command\":\"git add -A && git commit -m 'test'\"}","cwd":"/test"}`,
+			wantDeny: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := primitiveGuards([]byte(tt.input))
+			if tt.wantDeny && result == nil {
+				t.Error("expected primitive guard to deny, got nil (allow)")
+			}
+			if !tt.wantDeny && result != nil {
+				t.Errorf("expected primitive guard to allow, got deny: %s", result.PermissionDecisionReason)
+			}
+		})
+	}
+}
+
+// TestComplianceExemptionWithStringToolArgs tests the end-to-end compliance
+// exemption flow when toolArgs arrives as a JSON string (preToolUse format).
+// This was the root cause of the init deadlock: the detector failed to parse
+// string-form toolArgs into evt.Tool.Args, so isHookflowInitCommand returned
+// false even for "gh hookflow init".
+func TestComplianceExemptionWithStringToolArgs(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-string-args-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	sessionDir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+	// Create hookflows directory with a workflow (triggers compliance check)
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	workflow := "name: test\non:\n  hooks:\n    types: [preToolUse]\nsteps:\n  - run: echo ok\n"
+	if err := os.WriteFile(filepath.Join(workflowDir, "test.yml"), []byte(workflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No hooks.json → compliance check fires
+
+	// Simulate preToolUse with toolArgs as a JSON string (the actual format)
+	escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+	stringToolArgsInput := `{"toolName":"powershell","toolArgs":"{\"command\":\"gh hookflow init\"}","cwd":"` + escapedDir + `"}`
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runWithRawInput(tmpDir, stringToolArgsInput, "pre", true)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	// Should allow hookflow init through, not deny
+	if strings.Contains(output, "deny") {
+		t.Errorf("hookflow init with string-form toolArgs should be allowed through compliance check, got: %s", output)
+	}
+	if !strings.Contains(output, "allow") {
+		t.Errorf("Expected allow for hookflow init, got: %s", output)
+	}
+}

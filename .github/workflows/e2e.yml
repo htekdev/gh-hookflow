@@ -675,6 +675,100 @@ jobs:
           echo "✅ PASS: Hookflows + hooks.json but no sentinel → global processes and blocks"
           rm -rf "$BLOCK_DIR" $HOOKFLOW_SESSION_DIR
 
+      # ── Test 19: Compliance init recovery (deterministic) ───
+      # Simulates the global plugin scenario: workspace has hookflows but NO
+      # hooks.json. The compliance check should deny, then allow hookflow init
+      # through, and after init runs, normal operations should be allowed.
+      - name: 'Test 19: Compliance init recovery flow'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test19
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          # Create a fresh workspace with hookflows but NO hooks.json
+          TEST_DIR="$RUNNER_TEMP/e2e-test19-workspace"
+          rm -rf "$TEST_DIR"
+          mkdir -p "$TEST_DIR/.github/hookflows"
+          printf '%s\n' \
+            'name: Block env files' \
+            'on:' \
+            '  file:' \
+            '    paths:' \
+            '      - "**/.env*"' \
+            '    types: [create, edit]' \
+            'blocking: true' \
+            'steps:' \
+            '  - name: Deny' \
+            '    run: |' \
+            '      echo "Blocked"' \
+            '      exit 1' \
+            > "$TEST_DIR/.github/hookflows/block-env.yml"
+
+          # Initialize a git repo (required for hookflow)
+          cd "$TEST_DIR"
+          git init
+          git config user.email "e2e-test@hookflow.dev"
+          git config user.name "E2E Test"
+          echo "initial" > initial.txt
+          git add .
+          git commit -m "chore: initial commit"
+
+          echo "=== Step 1: Normal create should be DENIED (no hooks.json) ==="
+          ESCAPED_DIR=$(echo "$TEST_DIR" | sed 's/\\/\\\\/g')
+          RESULT=$(echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$TEST_DIR" 2>&1) || true
+          echo "$RESULT"
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"deny"'; then
+            echo "✅ Step 1 PASS: Normal create denied (compliance check fired)"
+          else
+            echo "❌ Step 1 FAIL: Expected deny from compliance check"
+            exit 1
+          fi
+          if echo "$RESULT" | grep -q "hookflow init"; then
+            echo "✅ Step 1 PASS: Deny message mentions hookflow init"
+          else
+            echo "❌ Step 1 FAIL: Deny message should mention hookflow init"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Step 2: hookflow init command should be ALLOWED through ==="
+          RESULT=$(echo "{\"toolName\":\"powershell\",\"toolArgs\":\"{\\\"command\\\":\\\"gh hookflow init\\\"}\",\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$TEST_DIR" 2>&1) || true
+          echo "$RESULT"
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"allow"'; then
+            echo "✅ Step 2 PASS: hookflow init allowed through compliance check"
+          else
+            echo "❌ Step 2 FAIL: hookflow init should be allowed through"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Step 3: Run actual init ==="
+          gh hookflow init --dir "$TEST_DIR"
+          if [ -f "$TEST_DIR/.github/hooks/hooks.json" ]; then
+            echo "✅ Step 3 PASS: hooks.json created by init"
+          else
+            echo "❌ Step 3 FAIL: hooks.json not created"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Step 4: Normal create should now be ALLOWED ==="
+          RESULT=$(echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --global --dir "$TEST_DIR" 2>&1) || true
+          echo "$RESULT"
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"allow"'; then
+            echo "✅ Step 4 PASS: Normal create allowed after init"
+          else
+            echo "❌ Step 4 FAIL: Expected allow after init"
+            exit 1
+          fi
+
+          echo "✅ ALL PASS: Compliance init recovery flow works end-to-end"
+          rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
+
       # ── Summary ────────────────────────────────────────────
       - name: Test summary
         if: always()
@@ -698,4 +792,5 @@ jobs:
           echo "  Test 16a-c:  Global hooks sentinel toggle"
           echo "  Test 17a-b:  Global compliance deny"
           echo "  Test 18a-c:  Global compliance scenarios"
+          echo "  Test 19:     Compliance init recovery (deterministic)"
           echo "════════════════════════════════════════"

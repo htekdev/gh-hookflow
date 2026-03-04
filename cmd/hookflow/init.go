@@ -8,14 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize hookflow globally or for a repository",
-	Long: `Initializes hookflow configuration.
+	Short: "Initialize hookflow for a repository",
+	Long: `Initializes hookflow hooks for the current repository.
 
-Always creates:
-- ~/.copilot/skills/hookflow/SKILL.md - AI agent guidance
+Creates:
 - .github/hooks/hooks.json - Per-repo hooks (required for Copilot CLI)
 
 With --repo flag, also creates:
@@ -51,20 +49,7 @@ func init() {
 }
 
 func runInit(dir string, force bool, repo bool) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	copilotDir := filepath.Join(homeDir, ".copilot")
-
-	// Always do global setup first
-	if err := runGlobalInit(copilotDir, force); err != nil {
-		return err
-	}
-
-	// Always create per-repo hooks (required for Copilot CLI to discover hookflow)
-	fmt.Println()
+	// Create per-repo hooks (required for Copilot CLI to discover hookflow)
 	if err := runRepoHooksInit(dir, force); err != nil {
 		return err
 	}
@@ -89,33 +74,6 @@ func runInit(dir string, force bool, repo bool) error {
 	}
 	fmt.Println("\nFor global hookflow across all repos, install the plugin:")
 	fmt.Println("  copilot plugin install htekdev/hookflow-gh-copilot-plugin")
-
-	return nil
-}
-
-// runGlobalInit creates global configuration in ~/.copilot/
-func runGlobalInit(copilotDir string, force bool) error {
-	fmt.Println("Setting up global hookflow configuration...")
-
-	// Ensure ~/.copilot/ exists
-	if err := os.MkdirAll(copilotDir, 0755); err != nil {
-		return fmt.Errorf("failed to create ~/.copilot directory: %w", err)
-	}
-
-	// Create ~/.copilot/skills/hookflow/SKILL.md
-	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		return fmt.Errorf("failed to create skill directory: %w", err)
-	}
-	skillFile := filepath.Join(skillDir, "SKILL.md")
-	if _, err := os.Stat(skillFile); err == nil && !force {
-		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", skillFile)
-	} else {
-		if err := os.WriteFile(skillFile, []byte(generateSkillMD()), 0644); err != nil {
-			return fmt.Errorf("failed to create SKILL.md: %w", err)
-		}
-		fmt.Printf("✓ Created %s\n", skillFile)
-	}
 
 	return nil
 }

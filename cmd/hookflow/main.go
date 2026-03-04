@@ -530,7 +530,13 @@ func primitiveGuards(input []byte) *schema.WorkflowResult {
 		Code    string `json:"code"`
 	}
 	if len(raw.ToolArgs) > 0 {
-		_ = json.Unmarshal(raw.ToolArgs, &args)
+		if err := json.Unmarshal(raw.ToolArgs, &args); err != nil {
+			// preToolUse sends toolArgs as a JSON string; unwrap and re-parse
+			var str string
+			if err2 := json.Unmarshal(raw.ToolArgs, &str); err2 == nil {
+				_ = json.Unmarshal([]byte(str), &args)
+			}
+		}
 	}
 	command := args.Command
 	if command == "" {

@@ -112,7 +112,13 @@ func (d *Detector) Detect(raw *RawHookInput) (*schema.Event, error) {
 	// Always set tool event
 	toolArgs := make(map[string]interface{})
 	if len(raw.ToolArgs) > 0 {
-		_ = json.Unmarshal(raw.ToolArgs, &toolArgs)
+		if err := json.Unmarshal(raw.ToolArgs, &toolArgs); err != nil {
+			// preToolUse sends toolArgs as a JSON string; unwrap and re-parse
+			var str string
+			if err2 := json.Unmarshal(raw.ToolArgs, &str); err2 == nil {
+				_ = json.Unmarshal([]byte(str), &toolArgs)
+			}
+		}
 	}
 	event.Tool = &schema.ToolEvent{
 		Name:     raw.ToolName,
