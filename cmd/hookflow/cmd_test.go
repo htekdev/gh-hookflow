@@ -3817,9 +3817,9 @@ steps:
 	}
 }
 
-// TestGlobalFlagSkipsWhenNoSentinel tests that --global mode skips processing
-// when the sentinel file doesn't exist (repo hooks are active).
-func TestGlobalFlagSkipsWhenNoSentinel(t *testing.T) {
+// TestGlobalFlagSkipsWhenRepoHooksActive tests that --global mode skips processing
+// when the repo-hooks-active marker exists (repo hooks already ran).
+func TestGlobalFlagSkipsWhenRepoHooksActive(t *testing.T) {
 tmpDir, err := os.MkdirTemp("", "hookflow-global-skip-*")
 if err != nil {
 t.Fatal(err)
@@ -3847,7 +3847,11 @@ if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), []byte(hooksJSON),
 t.Fatal(err)
 }
 
-// No sentinel file -> global mode should skip and allow
+// Create repo-hooks-active marker -> global mode should skip and allow
+if err := os.WriteFile(filepath.Join(sessionDir, "repo-hooks-active"), []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+
 oldStdout := os.Stdout
 stdoutR, stdoutW, _ := os.Pipe()
 os.Stdout = stdoutW
@@ -3863,13 +3867,13 @@ _, _ = buf.ReadFrom(stdoutR)
 output := buf.String()
 
 if !strings.Contains(output, "allow") {
-t.Errorf("Expected allow when no sentinel in global mode, got: %s", output)
+t.Errorf("Expected allow when repo-hooks-active marker exists in global mode, got: %s", output)
 }
 }
 
-// TestGlobalFlagProcessesWithSentinel tests that --global mode processes events
-// when the sentinel file exists (global-only mode).
-func TestGlobalFlagProcessesWithSentinel(t *testing.T) {
+// TestGlobalFlagProcessesWhenNoRepoHooks tests that --global mode processes events
+// when no repo-hooks-active marker exists (global-only mode).
+func TestGlobalFlagProcessesWhenNoRepoHooks(t *testing.T) {
 tmpDir, err := os.MkdirTemp("", "hookflow-global-process-*")
 if err != nil {
 t.Fatal(err)
@@ -3879,9 +3883,7 @@ defer func() { _ = os.RemoveAll(tmpDir) }()
 sessionDir := t.TempDir()
 t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
 
-if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
-t.Fatal(err)
-}
+// No repo-hooks-active marker — global should process
 
 workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
 if err := os.MkdirAll(workflowDir, 0755); err != nil {
@@ -3915,7 +3917,7 @@ _, _ = buf.ReadFrom(stdoutR)
 output := buf.String()
 
 if !strings.Contains(output, "allow") {
-t.Errorf("Expected allow with sentinel in global mode, got: %s", output)
+t.Errorf("Expected allow with global-only mode, got: %s", output)
 }
 }
 

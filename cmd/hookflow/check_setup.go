@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/htekdev/gh-hookflow/internal/logging"
@@ -17,12 +16,10 @@ import (
 var checkSetupCmd = &cobra.Command{
 	Use:   "check-setup",
 	Short: "Validate hookflow is properly configured",
-	Long: `Checks that hookflow is correctly set up with global hooks and MCP.
+	Long: `Checks that hookflow is correctly set up.
 
 Validates:
 1. hookflow binary is accessible
-2. ~/.copilot/hooks.json exists and has hookflow hooks
-3. ~/.copilot/mcp-config.json exists and has hookflow MCP server
 
 Exit codes:
   0 - All checks passed
@@ -54,12 +51,6 @@ func runCheckSetup(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	copilotDir := filepath.Join(homeDir, ".copilot")
 	allPassed := true
 
 	// Check 1: gh hookflow extension is available
@@ -68,37 +59,6 @@ func runCheckSetup(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Println("✗ gh hookflow not available - Install with: gh extension install htekdev/gh-hookflow")
 		allPassed = false
-	}
-
-	// Check 2: ~/.copilot/hooks.json has hookflow
-	hooksFile := filepath.Join(copilotDir, "hooks.json")
-	if hasHookflowHooks(hooksFile) {
-		fmt.Println("✓ Global hooks configured in ~/.copilot/hooks.json")
-	} else {
-		fmt.Println("✗ Global hooks not configured - run 'hookflow init'")
-		allPassed = false
-	}
-
-	// Check 3: ~/.copilot/mcp-config.json has hookflow MCP
-	mcpFile := filepath.Join(copilotDir, "mcp-config.json")
-	if hasHookflowMCP(mcpFile) {
-		fmt.Println("✓ MCP server registered in ~/.copilot/mcp-config.json")
-	} else {
-		fmt.Println("✗ MCP server not registered - run 'hookflow init'")
-		allPassed = false
-	}
-
-	// Toggle sentinel file for global-only mode detection.
-	// First call (global sessionStart) creates it; second call (repo sessionStart) deletes it.
-	created, err := session.ToggleSentinel()
-	if err != nil {
-		log.Warn("failed to toggle sentinel: %v", err)
-	} else if created {
-		log.Debug("sentinel created (global-only mode)")
-		fmt.Println("✓ Global-only sentinel created")
-	} else {
-		log.Debug("sentinel removed (repo hooks active)")
-		fmt.Println("✓ Repo hooks detected, sentinel removed")
 	}
 
 	if !allPassed {

@@ -2,90 +2,75 @@ package session
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestToggleSentinel_CreateAndDelete(t *testing.T) {
+func TestMarkRepoHooksActive(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
 
-	// Initially no sentinel
-	has, err := HasSentinel()
+	// Initially not active
+	active, err := IsRepoHooksActive()
 	if err != nil {
-		t.Fatalf("HasSentinel() error: %v", err)
+		t.Fatalf("IsRepoHooksActive() error: %v", err)
 	}
-	if has {
-		t.Fatal("expected no sentinel initially")
+	if active {
+		t.Fatal("expected repo hooks not active initially")
 	}
 
-	// First toggle creates it
-	created, err := ToggleSentinel()
-	if err != nil {
-		t.Fatalf("ToggleSentinel() error: %v", err)
-	}
-	if !created {
-		t.Fatal("expected sentinel to be created")
+	// Mark as active
+	if err := MarkRepoHooksActive(); err != nil {
+		t.Fatalf("MarkRepoHooksActive() error: %v", err)
 	}
 
-	has, err = HasSentinel()
+	// Now should be active
+	active, err = IsRepoHooksActive()
 	if err != nil {
-		t.Fatalf("HasSentinel() error: %v", err)
+		t.Fatalf("IsRepoHooksActive() error: %v", err)
 	}
-	if !has {
-		t.Fatal("expected sentinel to exist after creation")
+	if !active {
+		t.Fatal("expected repo hooks active after marking")
 	}
 
-	// Second toggle deletes it
-	created, err = ToggleSentinel()
-	if err != nil {
-		t.Fatalf("ToggleSentinel() error: %v", err)
-	}
-	if created {
-		t.Fatal("expected sentinel to be deleted")
-	}
-
-	has, err = HasSentinel()
-	if err != nil {
-		t.Fatalf("HasSentinel() error: %v", err)
-	}
-	if has {
-		t.Fatal("expected no sentinel after deletion")
+	// Verify file exists
+	markerPath := filepath.Join(dir, repoHooksActiveFileName)
+	if _, err := os.Stat(markerPath); os.IsNotExist(err) {
+		t.Fatal("marker file should exist on disk")
 	}
 }
 
-func TestToggleSentinel_DoubleToggle(t *testing.T) {
+func TestMarkRepoHooksActive_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
 
-	// Toggle on
-	created, _ := ToggleSentinel()
-	if !created {
-		t.Fatal("first toggle should create")
+	// Mark twice — should not error
+	if err := MarkRepoHooksActive(); err != nil {
+		t.Fatalf("first MarkRepoHooksActive() error: %v", err)
+	}
+	if err := MarkRepoHooksActive(); err != nil {
+		t.Fatalf("second MarkRepoHooksActive() error: %v", err)
 	}
 
-	// Toggle off
-	created, _ = ToggleSentinel()
-	if created {
-		t.Fatal("second toggle should delete")
+	active, err := IsRepoHooksActive()
+	if err != nil {
+		t.Fatalf("IsRepoHooksActive() error: %v", err)
 	}
-
-	// Toggle on again
-	created, _ = ToggleSentinel()
-	if !created {
-		t.Fatal("third toggle should create again")
+	if !active {
+		t.Fatal("expected repo hooks active")
 	}
 }
 
-func TestHasSentinel_NoSessionDir(t *testing.T) {
+func TestIsRepoHooksActive_NoSessionDir(t *testing.T) {
 	dir := t.TempDir()
 	nonexistent := dir + string(os.PathSeparator) + "nonexistent"
 	t.Setenv("HOOKFLOW_SESSION_DIR", nonexistent)
 
-	has, err := HasSentinel()
+	active, err := IsRepoHooksActive()
 	if err != nil {
-		t.Fatalf("HasSentinel() should not error for nonexistent dir: %v", err)
+		t.Fatalf("IsRepoHooksActive() should not error for nonexistent dir: %v", err)
 	}
-	if has {
-		t.Fatal("expected no sentinel for nonexistent dir")
+	if active {
+		t.Fatal("expected not active for nonexistent dir")
 	}
 }

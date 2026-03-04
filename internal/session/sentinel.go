@@ -5,46 +5,32 @@ import (
 	"path/filepath"
 )
 
-const sentinelFileName = "global-only"
+const repoHooksActiveFileName = "repo-hooks-active"
 
-// sentinelPath returns the path to the sentinel marker file for the current session.
-func sentinelPath() (string, error) {
+// repoHooksActivePath returns the path to the marker file for the current session.
+func repoHooksActivePath() (string, error) {
 	dir, err := GetSessionDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, sentinelFileName), nil
+	return filepath.Join(dir, repoHooksActiveFileName), nil
 }
 
-// ToggleSentinel creates the sentinel file if it doesn't exist, or deletes it if it does.
-// Returns true if the sentinel now exists (was created), false if it was deleted.
-func ToggleSentinel() (bool, error) {
-	path, err := sentinelPath()
+// MarkRepoHooksActive creates the marker file indicating repo hooks are handling hookflow.
+func MarkRepoHooksActive() error {
+	path, err := repoHooksActivePath()
 	if err != nil {
-		return false, err
+		return err
 	}
-
-	if _, err := os.Stat(path); err == nil {
-		// File exists — delete it
-		if err := os.Remove(path); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-
-	// File doesn't exist — create it
 	if err := EnsureSessionDir(); err != nil {
-		return false, err
+		return err
 	}
-	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
-		return false, err
-	}
-	return true, nil
+	return os.WriteFile(path, []byte(""), 0644)
 }
 
-// HasSentinel returns true if the sentinel file exists for the current session.
-func HasSentinel() (bool, error) {
-	path, err := sentinelPath()
+// IsRepoHooksActive returns true if the marker file exists for the current session.
+func IsRepoHooksActive() (bool, error) {
+	path, err := repoHooksActivePath()
 	if err != nil {
 		return false, err
 	}

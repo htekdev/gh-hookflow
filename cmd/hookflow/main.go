@@ -319,7 +319,7 @@ func init() {
 	runCmd.Flags().StringP("dir", "d", "", "Directory to search (default: current directory)")
 	runCmd.Flags().BoolP("raw", "r", false, "Accept raw hook input and auto-detect event type")
 	runCmd.Flags().StringP("event-type", "t", "preToolUse", "Hook event type: preToolUse or postToolUse")
-	runCmd.Flags().Bool("global", false, "Running from global hooks (checks sentinel for global-only mode)")
+	runCmd.Flags().Bool("global", false, "Running from global/plugin hooks (skips if repo hooks already ran)")
 
 	// logs flags
 	logsCmd.Flags().IntP("tail", "n", 50, "Number of lines to show")
@@ -404,22 +404,31 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 		}
 	}
 
-	// ── Global sentinel check ───────────────────────────────────────
-	// When invoked with --global (from global hooks.json), check the
-	// sentinel file. If sentinel doesn't exist, repo hooks handle it —
-	// skip processing to avoid double-execution.
+	// ── Global dedup check ─────────────────────────────────────────
+	// When invoked with --global (from plugin hooks), check if the repo
+	// hooks already ran hookflow for this session. If the repo-hooks-active
+	// marker exists, skip to avoid double-execution.
 	if global {
-		hasSentinel, err := session.HasSentinel()
+		repoActive, err := session.IsRepoHooksActive()
 		if err != nil {
-			log.Warn("failed to check sentinel: %v", err)
+			log.Warn("failed to check repo-hooks-active: %v", err)
 		}
-		if !hasSentinel {
-			log.Debug("global mode: no sentinel, skipping (repo hooks active)")
+		if repoActive {
+			log.Debug("global mode: repo hooks already active, skipping")
 			result := schema.NewAllowResult()
 			done(nil)
 			return outputWorkflowResult(result)
 		}
-		log.Debug("global mode: sentinel present, processing (global-only)")
+		log.Debug("global mode: no repo hooks, processing (global-only)")
+	}
+
+	// ── Repo hooks marker ──────────────────────────────────────────
+	// When invoked without --global (from repo hooks), create a marker
+	// so subsequent global hook invocations know to skip.
+	if !global {
+		if err := session.MarkRepoHooksActive(); err != nil {
+			log.Warn("failed to mark repo hooks active: %v", err)
+		}
 	}
 
 	// ── Error file read exemption ───────────────────────────────────
@@ -636,10 +645,10 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	log.Debug("found %d workflow files in %s", len(workflowFiles), workflowDir)
 
 	// ── Repo compliance check (global-only mode) ────────────────────
-	// When running from global hooks with sentinel active, check if the
-	// repo has hookflow entries in .github/hooks/hooks.json. If hookflows
-	// exist but hooks.json doesn't have hookflow entries, deny and tell
-	// the agent to run gh hookflow init (unless the current tool call IS
+	// When running from global/plugin hooks, check if the repo has
+	// hookflow entries in .github/hooks/hooks.json. If hookflows exist
+	// but hooks.json doesn't have hookflow entries, deny and tell the
+	// agent to run gh hookflow init (unless the current tool call IS
 	// hookflow init).
 	if global && len(workflowFiles) > 0 {
 		repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
