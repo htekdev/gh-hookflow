@@ -19,65 +19,6 @@ func TestInitGlobal(t *testing.T) {
 		t.Fatalf("runGlobalInit failed: %v", err)
 	}
 
-	// Verify ~/.copilot/hooks.json exists with hookflow
-	hooksPath := filepath.Join(copilotDir, "hooks.json")
-	hooksData, err := os.ReadFile(hooksPath)
-	if err != nil {
-		t.Fatalf("hooks.json not created: %v", err)
-	}
-
-	var hooksConfig map[string]interface{}
-	if err := json.Unmarshal(hooksData, &hooksConfig); err != nil {
-		t.Fatalf("hooks.json is invalid JSON: %v", err)
-	}
-
-	// Check hooks structure
-	hooks, ok := hooksConfig["hooks"].(map[string]interface{})
-	if !ok {
-		t.Fatal("hooks.json missing 'hooks' field")
-	}
-
-	// Check preToolUse hook exists
-	preToolUse, ok := hooks["preToolUse"].([]interface{})
-	if !ok || len(preToolUse) == 0 {
-		t.Fatal("hooks.json missing preToolUse hooks")
-	}
-
-	// Check postToolUse hook exists
-	postToolUse, ok := hooks["postToolUse"].([]interface{})
-	if !ok || len(postToolUse) == 0 {
-		t.Fatal("hooks.json missing postToolUse hooks")
-	}
-
-	// Verify hookflow command is in hooks
-	hooksStr := string(hooksData)
-	if !strings.Contains(hooksStr, "hookflow run") {
-		t.Error("hooks.json should contain 'hookflow run' command")
-	}
-
-	// Verify ~/.copilot/mcp-config.json exists with hookflow
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	mcpData, err := os.ReadFile(mcpPath)
-	if err != nil {
-		t.Fatalf("mcp-config.json not created: %v", err)
-	}
-
-	var mcpConfig map[string]interface{}
-	if err := json.Unmarshal(mcpData, &mcpConfig); err != nil {
-		t.Fatalf("mcp-config.json is invalid JSON: %v", err)
-	}
-
-	// Check mcpServers structure
-	mcpServers, ok := mcpConfig["mcpServers"].(map[string]interface{})
-	if !ok {
-		t.Fatal("mcp-config.json missing 'mcpServers' field")
-	}
-
-	// Check hookflow server exists
-	if _, ok := mcpServers["hookflow"]; !ok {
-		t.Fatal("mcp-config.json missing 'hookflow' server")
-	}
-
 	// Verify ~/.copilot/skills/hookflow/SKILL.md exists
 	skillPath := filepath.Join(copilotDir, "skills", "hookflow", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
@@ -91,6 +32,18 @@ func TestInitGlobal(t *testing.T) {
 
 	if !strings.Contains(string(skillData), "hookflow") {
 		t.Error("SKILL.md should contain 'hookflow'")
+	}
+
+	// Verify hooks.json is NOT created (global hooks moved to plugin)
+	hooksPath := filepath.Join(copilotDir, "hooks.json")
+	if _, err := os.Stat(hooksPath); err == nil {
+		t.Error("global hooks.json should NOT be created (moved to plugin)")
+	}
+
+	// Verify mcp-config.json is NOT created (removed from init)
+	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
+	if _, err := os.Stat(mcpPath); err == nil {
+		t.Error("mcp-config.json should NOT be created (removed from init)")
 	}
 }
 
@@ -166,145 +119,56 @@ func TestInitRepo(t *testing.T) {
 	}
 }
 
-// TestInitMerge tests that init preserves existing configuration entries
+// TestInitMerge tests that init preserves existing skill configuration
 func TestInitMerge(t *testing.T) {
 	tempHome := t.TempDir()
 	copilotDir := filepath.Join(tempHome, ".copilot")
 
-	// Create copilot dir
-	if err := os.MkdirAll(copilotDir, 0755); err != nil {
-		t.Fatalf("failed to create copilot dir: %v", err)
+	// Create copilot dir and existing skill
+	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
 	}
 
-	// Create existing mcp-config.json with another server
-	existingMCP := map[string]interface{}{
-		"mcpServers": map[string]interface{}{
-			"other-server": map[string]interface{}{
-				"type":    "stdio",
-				"command": "other-tool",
-				"args":    []string{"serve"},
-			},
-		},
+	// Create existing SKILL.md - should be preserved without force
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	customContent := "# Custom SKILL.md\nThis should be preserved"
+	if err := os.WriteFile(skillPath, []byte(customContent), 0644); err != nil {
+		t.Fatalf("failed to create custom SKILL.md: %v", err)
 	}
 
-	existingMCPBytes, _ := json.MarshalIndent(existingMCP, "", "  ")
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	if err := os.WriteFile(mcpPath, existingMCPBytes, 0644); err != nil {
-		t.Fatalf("failed to create existing mcp-config.json: %v", err)
-	}
-
-	// Create existing hooks.json with another hook
-	existingHooks := map[string]interface{}{
-		"version": 1,
-		"hooks": map[string]interface{}{
-			"preToolUse": []interface{}{
-				map[string]interface{}{
-					"type":    "command",
-					"bash":    "echo 'existing hook'",
-					"comment": "existing-hook",
-				},
-			},
-		},
-	}
-
-	existingHooksBytes, _ := json.MarshalIndent(existingHooks, "", "  ")
-	hooksPath := filepath.Join(copilotDir, "hooks.json")
-	if err := os.WriteFile(hooksPath, existingHooksBytes, 0644); err != nil {
-		t.Fatalf("failed to create existing hooks.json: %v", err)
-	}
-
-	// Run init
+	// Run init without force
 	if err := runGlobalInit(copilotDir, false); err != nil {
 		t.Fatalf("runGlobalInit failed: %v", err)
 	}
 
-	// Verify other-server is preserved in mcp-config.json
-	mcpData, err := os.ReadFile(mcpPath)
+	// Verify custom SKILL.md is preserved
+	skillData, err := os.ReadFile(skillPath)
 	if err != nil {
-		t.Fatalf("failed to read mcp-config.json: %v", err)
+		t.Fatalf("failed to read SKILL.md: %v", err)
 	}
 
-	var mcpConfig map[string]interface{}
-	if err := json.Unmarshal(mcpData, &mcpConfig); err != nil {
-		t.Fatalf("mcp-config.json is invalid JSON: %v", err)
-	}
-
-	mcpServers, ok := mcpConfig["mcpServers"].(map[string]interface{})
-	if !ok {
-		t.Fatal("mcp-config.json missing 'mcpServers' field")
-	}
-
-	// Check other-server is preserved
-	if _, ok := mcpServers["other-server"]; !ok {
-		t.Error("existing 'other-server' should be preserved in mcp-config.json")
-	}
-
-	// Check hookflow server is added
-	if _, ok := mcpServers["hookflow"]; !ok {
-		t.Error("'hookflow' server should be added to mcp-config.json")
-	}
-
-	// Verify hooks.json has both existing and hookflow hooks
-	hooksData, err := os.ReadFile(hooksPath)
-	if err != nil {
-		t.Fatalf("failed to read hooks.json: %v", err)
-	}
-
-	var hooksConfig map[string]interface{}
-	if err := json.Unmarshal(hooksData, &hooksConfig); err != nil {
-		t.Fatalf("hooks.json is invalid JSON: %v", err)
-	}
-
-	hooks, ok := hooksConfig["hooks"].(map[string]interface{})
-	if !ok {
-		t.Fatal("hooks.json missing 'hooks' field")
-	}
-
-	preToolUse, ok := hooks["preToolUse"].([]interface{})
-	if !ok {
-		t.Fatal("hooks.json missing 'preToolUse' field")
-	}
-
-	// Check both hooks exist (existing + hookflow)
-	hooksStr := string(hooksData)
-	if !strings.Contains(hooksStr, "existing hook") {
-		t.Error("existing hook should be preserved in hooks.json")
-	}
-	if !strings.Contains(hooksStr, "hookflow run") {
-		t.Error("hookflow hook should be added to hooks.json")
-	}
-
-	// Count hooks - should have 2
-	if len(preToolUse) < 2 {
-		t.Errorf("expected at least 2 preToolUse hooks, got %d", len(preToolUse))
+	if string(skillData) != customContent {
+		t.Error("custom SKILL.md should be preserved without --force")
 	}
 }
 
-// TestInitForce tests that --force overwrites existing hookflow entries
+// TestInitForce tests that --force overwrites existing skill
 func TestInitForce(t *testing.T) {
 	tempHome := t.TempDir()
 	copilotDir := filepath.Join(tempHome, ".copilot")
 
-	// Create copilot dir
-	if err := os.MkdirAll(copilotDir, 0755); err != nil {
-		t.Fatalf("failed to create copilot dir: %v", err)
+	// Create copilot dir and existing skill
+	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("failed to create skill dir: %v", err)
 	}
 
-	// Create existing mcp-config.json with old hookflow config
-	existingMCP := map[string]interface{}{
-		"mcpServers": map[string]interface{}{
-			"hookflow": map[string]interface{}{
-				"type":    "stdio",
-				"command": "old-hookflow",
-				"args":    []string{"old-serve"},
-			},
-		},
-	}
-
-	existingMCPBytes, _ := json.MarshalIndent(existingMCP, "", "  ")
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	if err := os.WriteFile(mcpPath, existingMCPBytes, 0644); err != nil {
-		t.Fatalf("failed to create existing mcp-config.json: %v", err)
+	// Create existing SKILL.md with old content
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	oldContent := "# Old SKILL.md\nThis should be overwritten with --force"
+	if err := os.WriteFile(skillPath, []byte(oldContent), 0644); err != nil {
+		t.Fatalf("failed to create old SKILL.md: %v", err)
 	}
 
 	// Run init with force
@@ -312,22 +176,22 @@ func TestInitForce(t *testing.T) {
 		t.Fatalf("runGlobalInit with force failed: %v", err)
 	}
 
-	// Verify hookflow config was updated
-	mcpData, err := os.ReadFile(mcpPath)
+	// Verify SKILL.md was overwritten
+	skillData, err := os.ReadFile(skillPath)
 	if err != nil {
-		t.Fatalf("failed to read mcp-config.json: %v", err)
+		t.Fatalf("failed to read SKILL.md: %v", err)
 	}
 
-	if strings.Contains(string(mcpData), "old-hookflow") {
-		t.Error("old hookflow config should be replaced with --force")
+	if strings.Contains(string(skillData), "Old SKILL.md") {
+		t.Error("old SKILL.md content should be replaced with --force")
 	}
-	if !strings.Contains(string(mcpData), "mcp") {
-		t.Error("new hookflow config should include 'mcp' args")
+	if !strings.Contains(string(skillData), "hookflow") {
+		t.Error("new SKILL.md should contain 'hookflow'")
 	}
 }
 
-// TestInitSkipsExisting tests that init skips files when they already exist (no force)
-func TestInitSkipsExisting(t *testing.T) {
+// TestInitSkipsExistingSkill tests that init skips SKILL.md when it already exists (no force)
+func TestInitSkipsExistingSkill(t *testing.T) {
 	tempHome := t.TempDir()
 	copilotDir := filepath.Join(tempHome, ".copilot")
 	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
@@ -541,41 +405,31 @@ func TestGenerateSkillMD(t *testing.T) {
 	}
 }
 
-// TestInitInvalidJSONBackup tests that invalid JSON files are backed up
-func TestInitInvalidJSONBackup(t *testing.T) {
+// TestInitDoesNotCreateGlobalHooksOrMCP tests that init no longer creates global hooks.json or mcp-config.json
+func TestInitDoesNotCreateGlobalHooksOrMCP(t *testing.T) {
 	tempHome := t.TempDir()
 	copilotDir := filepath.Join(tempHome, ".copilot")
-
-	// Create copilot dir
-	if err := os.MkdirAll(copilotDir, 0755); err != nil {
-		t.Fatalf("failed to create copilot dir: %v", err)
-	}
-
-	// Create invalid mcp-config.json
-	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
-	if err := os.WriteFile(mcpPath, []byte("invalid json {{{"), 0644); err != nil {
-		t.Fatalf("failed to create invalid mcp-config.json: %v", err)
-	}
 
 	// Run init
 	if err := runGlobalInit(copilotDir, false); err != nil {
 		t.Fatalf("runGlobalInit failed: %v", err)
 	}
 
-	// Verify backup was created
-	backupPath := mcpPath + ".bak"
-	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
-		t.Error("invalid JSON file should have been backed up")
+	// Verify hooks.json does NOT exist
+	hooksPath := filepath.Join(copilotDir, "hooks.json")
+	if _, err := os.Stat(hooksPath); err == nil {
+		t.Error("global hooks.json should NOT be created - hooks are delivered via plugin")
 	}
 
-	// Verify new valid JSON was created
-	mcpData, err := os.ReadFile(mcpPath)
-	if err != nil {
-		t.Fatalf("failed to read new mcp-config.json: %v", err)
+	// Verify mcp-config.json does NOT exist
+	mcpPath := filepath.Join(copilotDir, "mcp-config.json")
+	if _, err := os.Stat(mcpPath); err == nil {
+		t.Error("mcp-config.json should NOT be created - removed from init")
 	}
 
-	var mcpConfig map[string]interface{}
-	if err := json.Unmarshal(mcpData, &mcpConfig); err != nil {
-		t.Error("new mcp-config.json should be valid JSON")
+	// Verify SKILL.md still IS created
+	skillPath := filepath.Join(copilotDir, "skills", "hookflow", "SKILL.md")
+	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+		t.Error("SKILL.md should still be created by init")
 	}
 }

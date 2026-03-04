@@ -15,13 +15,14 @@ var initCmd = &cobra.Command{
 	Long: `Initializes hookflow configuration.
 
 Always creates:
-- ~/.copilot/hooks.json - Global hooks for preToolUse/postToolUse
-- ~/.copilot/mcp-config.json - MCP server registration
 - ~/.copilot/skills/hookflow/SKILL.md - AI agent guidance
 - .github/hooks/hooks.json - Per-repo hooks (required for Copilot CLI)
 
 With --repo flag, also creates:
 - .github/hookflows/example.yml - Example workflow
+
+For global hookflow across all repos, install the hookflow plugin:
+  copilot plugin install htekdev/hookflow-gh-copilot-plugin
 
 After running init, you can create workflows using 'hookflow create'
 or by manually creating YAML files in .github/hookflows/`,
@@ -86,6 +87,8 @@ func runInit(dir string, force bool, repo bool) error {
 		fmt.Println("  2. Or edit the example workflow in .github/hookflows/example.yml")
 		fmt.Println("  3. Commit the .github/ directory to enable for your team")
 	}
+	fmt.Println("\nFor global hookflow across all repos, install the plugin:")
+	fmt.Println("  copilot plugin install htekdev/hookflow-gh-copilot-plugin")
 
 	return nil
 }
@@ -99,19 +102,7 @@ func runGlobalInit(copilotDir string, force bool) error {
 		return fmt.Errorf("failed to create ~/.copilot directory: %w", err)
 	}
 
-	// 1. Create/merge ~/.copilot/hooks.json
-	hooksFile := filepath.Join(copilotDir, "hooks.json")
-	if err := mergeGlobalHooksJSON(hooksFile, force); err != nil {
-		return err
-	}
-
-	// 2. Create/merge ~/.copilot/mcp-config.json
-	mcpFile := filepath.Join(copilotDir, "mcp-config.json")
-	if err := mergeMCPConfigJSON(mcpFile, force); err != nil {
-		return err
-	}
-
-	// 3. Create ~/.copilot/skills/hookflow/SKILL.md
+	// Create ~/.copilot/skills/hookflow/SKILL.md
 	skillDir := filepath.Join(copilotDir, "skills", "hookflow")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return fmt.Errorf("failed to create skill directory: %w", err)
@@ -165,137 +156,6 @@ func runRepoScaffoldInit(dir string, force bool) error {
 		fmt.Printf("⚠ %s already exists (use --force to overwrite)\n", exampleWorkflow)
 	}
 
-	return nil
-}
-
-// mergeGlobalHooksJSON creates or merges hookflow entries into ~/.copilot/hooks.json
-func mergeGlobalHooksJSON(path string, force bool) error {
-	// Define hookflow hooks (global uses --global flag for sentinel checking)
-	hookflowPreHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type preToolUse --global",
-		"powershell": "gh hookflow run --raw --event-type preToolUse --global",
-		"timeoutSec": 1800,
-	}
-	hookflowPostHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type postToolUse --global",
-		"powershell": "gh hookflow run --raw --event-type postToolUse --global",
-		"timeoutSec": 1800,
-	}
-	sessionStartHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       `gh hookflow check-setup || echo '{"systemMessage":"⚠️ hookflow not configured. Run: gh extension install htekdev/gh-hookflow && gh hookflow init"}'`,
-		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { Write-Output '{"systemMessage":"hookflow not configured. Run: gh extension install htekdev/gh-hookflow; gh hookflow init"}' }`,
-		"timeoutSec": 1800,
-		"comment":    "Ensure gh hookflow extension is installed and toggle global-only sentinel",
-	}
-
-	// Load existing config or create new one
-	config := map[string]interface{}{
-		"version": 1,
-		"hooks":   map[string]interface{}{},
-	}
-
-	if data, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(data, &config); err != nil {
-			// If file exists but is invalid JSON, backup and start fresh
-			_ = os.Rename(path, path+".bak")
-			fmt.Printf("⚠ Backed up invalid %s to %s.bak\n", path, path)
-		}
-	}
-
-	// Ensure hooks map exists
-	hooks, ok := config["hooks"].(map[string]interface{})
-	if !ok {
-		hooks = map[string]interface{}{}
-		config["hooks"] = hooks
-	}
-
-	// Merge preToolUse hooks
-	preToolUse := getHookArray(hooks, "preToolUse")
-	if !containsHookflowHook(preToolUse) || force {
-		preToolUse = removeHookflowHooks(preToolUse)
-		preToolUse = append(preToolUse, hookflowPreHook)
-		hooks["preToolUse"] = preToolUse
-	}
-
-	// Merge postToolUse hooks
-	postToolUse := getHookArray(hooks, "postToolUse")
-	if !containsHookflowHook(postToolUse) || force {
-		postToolUse = removeHookflowHooks(postToolUse)
-		postToolUse = append(postToolUse, hookflowPostHook)
-		hooks["postToolUse"] = postToolUse
-	}
-
-	// Merge sessionStart hooks
-	sessionStart := getHookArray(hooks, "sessionStart")
-	if !containsHookflowHook(sessionStart) || force {
-		sessionStart = removeHookflowHooks(sessionStart)
-		sessionStart = append(sessionStart, sessionStartHook)
-		hooks["sessionStart"] = sessionStart
-	}
-
-	// Write merged config
-	jsonBytes, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal hooks.json: %w", err)
-	}
-
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write hooks.json: %w", err)
-	}
-
-	fmt.Printf("✓ Created %s (global hooks)\n", path)
-	return nil
-}
-
-// mergeMCPConfigJSON creates or merges hookflow MCP server into ~/.copilot/mcp-config.json
-func mergeMCPConfigJSON(path string, force bool) error {
-	// Define hookflow MCP server (uses gh extension)
-	hookflowMCP := map[string]interface{}{
-		"type":    "local",
-		"command": "gh",
-		"args":    []string{"hookflow", "mcp", "serve"},
-		"tools":   []string{"*"},
-	}
-
-	// Load existing config or create new one
-	config := map[string]interface{}{
-		"mcpServers": map[string]interface{}{},
-	}
-
-	if data, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(data, &config); err != nil {
-			// If file exists but is invalid JSON, backup and start fresh
-			_ = os.Rename(path, path+".bak")
-			fmt.Printf("⚠ Backed up invalid %s to %s.bak\n", path, path)
-		}
-	}
-
-	// Ensure mcpServers map exists
-	mcpServers, ok := config["mcpServers"].(map[string]interface{})
-	if !ok {
-		mcpServers = map[string]interface{}{}
-		config["mcpServers"] = mcpServers
-	}
-
-	// Add/update hookflow MCP server
-	if _, exists := mcpServers["hookflow"]; !exists || force {
-		mcpServers["hookflow"] = hookflowMCP
-	}
-
-	// Write merged config
-	jsonBytes, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal mcp-config.json: %w", err)
-	}
-
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write mcp-config.json: %w", err)
-	}
-
-	fmt.Printf("✓ Created %s (MCP server)\n", path)
 	return nil
 }
 
