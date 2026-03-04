@@ -96,7 +96,7 @@ func buildFailureMessage(act *activity.Activity, activityID string) string {
 			b.WriteString("\n\n")
 		}
 	} else if ps, ok := act.Phases[activity.PhasePostPush]; ok && ps.Status == activity.StatusFailed {
-		b.WriteString(fmt.Sprintf("Push succeeded but post-push checks FAILED (%d workflow(s)).\n\n", len(ps.Workflows)))
+		fmt.Fprintf(&b, "Push succeeded but post-push checks FAILED (%d workflow(s)).\n\n", len(ps.Workflows))
 		writePhaseDetails(&b, ps)
 		writePhaseLogs(&b, act, activity.PhasePostPush)
 	} else {
@@ -119,11 +119,11 @@ func writePhaseDetails(b *strings.Builder, ps *activity.PhaseStatus) {
 
 	for _, wf := range ps.Workflows {
 		if wf.Success {
-			b.WriteString(fmt.Sprintf("  ✅ %s: passed\n", wf.Name))
+			fmt.Fprintf(b, "  ✅ %s: passed\n", wf.Name)
 		} else {
-			b.WriteString(fmt.Sprintf("  ❌ %s: FAILED", wf.Name))
+			fmt.Fprintf(b, "  ❌ %s: FAILED", wf.Name)
 			if wf.Error != "" {
-				b.WriteString(fmt.Sprintf(" — %s", wf.Error))
+				fmt.Fprintf(b, " — %s", wf.Error)
 			}
 			b.WriteString("\n")
 		}
@@ -150,7 +150,7 @@ func writePhaseLogs(b *strings.Builder, act *activity.Activity, phase activity.P
 		if content == "" {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("--- Logs: %s ---\n", strings.TrimPrefix(name, prefix)))
+		fmt.Fprintf(b, "--- Logs: %s ---\n", strings.TrimPrefix(name, prefix))
 		b.WriteString(content)
 		b.WriteString("\n\n")
 	}
