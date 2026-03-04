@@ -395,13 +395,24 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	var raw struct {
 		ToolName  string `json:"toolName"`
 		SessionID string `json:"sessionId"`
+		Cwd       string `json:"cwd"`
 	}
 	_ = json.Unmarshal(input, &raw)
 	if raw.SessionID != "" && os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
-		if dir, err := session.SessionDirForID(raw.SessionID); err == nil {
-			_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
-			log.Debug("set session dir from sessionId: %s", dir)
+		if sessionDir, err := session.SessionDirForID(raw.SessionID); err == nil {
+			_ = os.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+			log.Debug("set session dir from sessionId: %s", sessionDir)
 		}
+	}
+
+	// ── Hook input cwd override ────────────────────────────────────
+	// The hook input cwd is the authoritative workspace/repo root set
+	// by Copilot CLI. Use it instead of os.Getwd() — critical for
+	// global/plugin hooks where the process cwd may differ from the
+	// actual repo root.
+	if raw.Cwd != "" {
+		dir = raw.Cwd
+		log.Debug("using hook input cwd as dir: %s", dir)
 	}
 
 	// ── Global dedup check ─────────────────────────────────────────
@@ -654,26 +665,23 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	// ── Repo compliance check (global-only mode) ────────────────────
 	// When running from global/plugin hooks, check if the repo has
 	// hookflow entries in .github/hooks/hooks.json. If hookflows exist
-	// but hooks.json doesn't have hookflow entries, auto-initialize
-	// the repo hooks so workflows are properly triggered going forward.
+	// but hooks.json doesn't have hookflow entries, deny and instruct
+	// the agent to run gh hookflow init. We deny instead of silently
+	// auto-creating because files created without the agent's knowledge
+	// may be reverted by the agent as unexpected changes.
 	if global && len(workflowFiles) > 0 {
 		repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
 		if !hasHookflowHooks(repoHooksFile) {
-			// Check if the agent is running hookflow init — allow that through
+			// Allow hookflow init through so the agent can fix the issue
 			if !isHookflowInitCommand(evt) {
-				log.Info("repo has hookflows but missing hooks.json — auto-initializing")
-				if err := silentAutoInit(dir); err != nil {
-					log.Error("auto-init failed: %v", err)
-					result := schema.NewDenyResult(
-						"This repo has hookflow workflows in .github/hookflows/ but auto-initialization failed.\n\n" +
-							"Run manually: gh hookflow init\n\n" +
-							"Error: " + err.Error())
-					return outputWorkflowResult(result)
-				}
-				log.Info("auto-init complete — repo hooks created, continuing workflow processing")
-			} else {
-				log.Debug("allowing hookflow init command through compliance check")
+				log.Info("repo has hookflows but hookflow not initialized — denying until init")
+				result := schema.NewDenyResult(
+					"This repo has hookflow workflows in .github/hookflows/ but hookflow has not been initialized.\n\n" +
+						"Run: gh hookflow init\n\n" +
+						"This will create .github/hooks/hooks.json so hookflow can enforce your workflows.")
+				return outputWorkflowResult(result)
 			}
+			log.Debug("allowing hookflow init command through compliance check")
 		}
 	}
 

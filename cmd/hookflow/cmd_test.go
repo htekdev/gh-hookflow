@@ -3921,10 +3921,11 @@ t.Errorf("Expected allow with global-only mode, got: %s", output)
 }
 }
 
-// TestGlobalComplianceAutoInitsWithStaleMarker tests the mid-session scenario:
+// TestGlobalComplianceDeniesWithStaleMarker tests the mid-session scenario:
 // hooks.json existed (marker was set), then hooks.json was deleted.
-// Global mode should detect the stale marker, clear it, and auto-init.
-func TestGlobalComplianceAutoInitsWithStaleMarker(t *testing.T) {
+// Global mode should detect the stale marker, clear it, and deny
+// instructing the agent to run gh hookflow init.
+func TestGlobalComplianceDeniesWithStaleMarker(t *testing.T) {
 tmpDir, err := os.MkdirTemp("", "hookflow-stale-marker-*")
 if err != nil {
 t.Fatal(err)
@@ -3963,35 +3964,25 @@ var buf bytes.Buffer
 _, _ = buf.ReadFrom(stdoutR)
 output := buf.String()
 
-// Should NOT skip due to stale marker — should auto-init and process
-if strings.Contains(output, "deny") && strings.Contains(output, "hasn't been initialized") {
-t.Errorf("Expected auto-init (allow) despite stale marker, but got deny: %s", output)
+// Should deny and tell agent to run gh hookflow init
+if !strings.Contains(output, "deny") {
+t.Errorf("Expected deny when stale marker detected, got: %s", output)
 }
-
-// Verify hooks.json was auto-created
-hooksFile := filepath.Join(tmpDir, ".github", "hooks", "hooks.json")
-if _, statErr := os.Stat(hooksFile); os.IsNotExist(statErr) {
-t.Error("Expected hooks.json to be auto-created after stale marker detection, but it doesn't exist")
-}
-
-// Verify hooks.json contains hookflow entries
-if data, readErr := os.ReadFile(hooksFile); readErr == nil {
-hookStr := string(data)
-if !strings.Contains(hookStr, "hookflow") {
-t.Errorf("Expected hooks.json to contain hookflow entries, got: %s", hookStr)
-}
+if !strings.Contains(output, "gh hookflow init") {
+t.Errorf("Expected deny message to mention 'gh hookflow init', got: %s", output)
 }
 
 // Verify the stale marker was cleared
 markerPath := filepath.Join(sessionDir, "repo-hooks-active")
 if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
-t.Error("Expected stale repo-hooks-active marker to be cleared after auto-init")
+t.Error("Expected stale repo-hooks-active marker to be cleared")
 }
 }
 
-// TestGlobalComplianceAutoInitsWhenNoRepoHooks tests that global mode auto-initializes
-// when hookflows exist but repo hooks.json doesn't have hookflow entries.
-func TestGlobalComplianceAutoInitsWhenNoRepoHooks(t *testing.T) {
+// TestGlobalComplianceDeniesWhenNoRepoHooks tests that global mode denies
+// when hookflows exist but repo hooks.json doesn't have hookflow entries,
+// instructing the agent to run gh hookflow init.
+func TestGlobalComplianceDeniesWhenNoRepoHooks(t *testing.T) {
 tmpDir, err := os.MkdirTemp("", "hookflow-compliance-*")
 if err != nil {
 t.Fatal(err)
@@ -4034,23 +4025,18 @@ var buf bytes.Buffer
 _, _ = buf.ReadFrom(stdoutR)
 output := buf.String()
 
-// Should auto-init and allow (not deny)
-if strings.Contains(output, "deny") && strings.Contains(output, "hasn't been initialized") {
-t.Errorf("Expected auto-init (allow), but got deny: %s", output)
+// Should deny and instruct to run gh hookflow init
+if !strings.Contains(output, "deny") {
+t.Errorf("Expected deny when hookflows exist but not initialized, got: %s", output)
+}
+if !strings.Contains(output, "gh hookflow init") {
+t.Errorf("Expected deny message to mention 'gh hookflow init', got: %s", output)
 }
 
-// Verify hooks.json was auto-created
+// hooks.json should NOT be auto-created
 hooksFile := filepath.Join(tmpDir, ".github", "hooks", "hooks.json")
-if _, statErr := os.Stat(hooksFile); os.IsNotExist(statErr) {
-t.Error("Expected hooks.json to be auto-created, but it doesn't exist")
-}
-
-// Verify hooks.json contains hookflow entries
-if data, readErr := os.ReadFile(hooksFile); readErr == nil {
-hookStr := string(data)
-if !strings.Contains(hookStr, "hookflow") {
-t.Errorf("Expected hooks.json to contain hookflow entries, got: %s", hookStr)
-}
+if _, statErr := os.Stat(hooksFile); !os.IsNotExist(statErr) {
+t.Error("hooks.json should NOT be auto-created — agent should run gh hookflow init itself")
 }
 }
 
@@ -4167,5 +4153,73 @@ if got != tt.expect {
 t.Errorf("isHookflowInitCommand() = %v, want %v", got, tt.expect)
 }
 })
+}
+}
+
+// TestGlobalComplianceUsesHookInputCwd tests that global mode uses the hook input's
+// cwd field (the actual repo root) rather than os.Getwd() for workflow discovery.
+// This is critical for plugin hooks where the process cwd may differ.
+func TestGlobalComplianceUsesHookInputCwd(t *testing.T) {
+// repoDir simulates the actual repo root (has hookflows but no hooks.json)
+repoDir, err := os.MkdirTemp("", "hookflow-repo-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(repoDir) }()
+
+// processCwd simulates the process working directory (different from repo root)
+processCwd, err := os.MkdirTemp("", "hookflow-process-cwd-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(processCwd) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+// Create hookflows in the REPO dir (not the process cwd)
+workflowDir := filepath.Join(repoDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: test\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "test.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+
+// Hook input cwd points to the actual repo root
+escapedRepoDir := strings.ReplaceAll(repoDir, `\`, `\\`)
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+// Pass processCwd as dir (simulating os.Getwd() from plugin context)
+// but hook input cwd is repoDir (the actual repo root)
+_ = runWithRawInput(processCwd, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedRepoDir+`"}`, "pre", true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+// Should deny with init message (proving it found hookflows in repoDir, not processCwd)
+if !strings.Contains(output, "deny") {
+t.Errorf("Expected deny (hookflows found via hook input cwd), got: %s", output)
+}
+if !strings.Contains(output, "gh hookflow init") {
+t.Errorf("Expected deny to mention 'gh hookflow init', got: %s", output)
+}
+
+// Verify NO hooks.json was created anywhere (deny, not auto-init)
+repoHooksFile := filepath.Join(repoDir, ".github", "hooks", "hooks.json")
+if _, statErr := os.Stat(repoHooksFile); !os.IsNotExist(statErr) {
+t.Error("hooks.json should NOT be auto-created — agent should run gh hookflow init")
+}
+processHooksFile := filepath.Join(processCwd, ".github", "hooks", "hooks.json")
+if _, statErr := os.Stat(processHooksFile); !os.IsNotExist(statErr) {
+t.Error("hooks.json should NOT be created in the process cwd")
 }
 }
