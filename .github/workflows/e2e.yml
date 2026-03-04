@@ -695,20 +695,20 @@ jobs:
           # Create a fresh workspace with hookflows but NO hooks.json
           TEST_DIR=$(mktemp -d)
           mkdir -p "$TEST_DIR/.github/hookflows"
-          cat > "$TEST_DIR/.github/hookflows/block-env.yml" <<'WORKFLOW'
-name: Block env files
-on:
-  file:
-    paths:
-      - '**/.env*'
-    types: [create, edit]
-blocking: true
-steps:
-  - name: Deny
-    run: |
-      echo "Blocked"
-      exit 1
-WORKFLOW
+          printf '%s\n' \
+            'name: Block env files' \
+            'on:' \
+            '  file:' \
+            '    paths:' \
+            '      - "**/.env*"' \
+            '    types: [create, edit]' \
+            'blocking: true' \
+            'steps:' \
+            '  - name: Deny' \
+            '    run: |' \
+            '      echo "Blocked"' \
+            '      exit 1' \
+            > "$TEST_DIR/.github/hookflows/block-env.yml"
 
           # Initialize a git repo (required for hookflow)
           cd "$TEST_DIR"
