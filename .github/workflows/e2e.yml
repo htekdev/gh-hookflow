@@ -687,7 +687,8 @@ jobs:
           mkdir -p $HOOKFLOW_SESSION_DIR
 
           # Create a fresh workspace with hookflows but NO hooks.json
-          TEST_DIR=$(mktemp -d)
+          TEST_DIR="$RUNNER_TEMP/e2e-test19-workspace"
+          rm -rf "$TEST_DIR"
           mkdir -p "$TEST_DIR/.github/hookflows"
           printf '%s\n' \
             'name: Block env files' \
