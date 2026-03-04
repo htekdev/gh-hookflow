@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/htekdev/gh-hookflow/internal/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -283,116 +282,7 @@ func removeHookflowHooks(hooks []interface{}) []interface{} {
 	return result
 }
 
-// silentAutoInit performs auto-initialization without stdout output.
-// Called when hookflow detects hookflows exist but repo hooks are missing.
-func silentAutoInit(dir string) error {
-	log := logging.Context("auto-init")
 
-	// Global: create skill file if missing
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	skillDir := filepath.Join(homeDir, ".copilot", "skills", "hookflow")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		return fmt.Errorf("failed to create skill directory: %w", err)
-	}
-	skillFile := filepath.Join(skillDir, "SKILL.md")
-	if _, statErr := os.Stat(skillFile); os.IsNotExist(statErr) {
-		if writeErr := os.WriteFile(skillFile, []byte(generateSkillMD()), 0644); writeErr != nil {
-			log.Warn("failed to create SKILL.md: %v", writeErr)
-		} else {
-			log.Info("auto-created skill file: %s", skillFile)
-		}
-	}
-
-	// Repo: create hooks.json
-	hooksDir := filepath.Join(dir, ".github", "hooks")
-	if err := os.MkdirAll(hooksDir, 0755); err != nil {
-		return fmt.Errorf("failed to create hooks directory: %w", err)
-	}
-
-	hooksFile := filepath.Join(hooksDir, "hooks.json")
-	if err := silentMergeRepoHooksJSON(hooksFile); err != nil {
-		return err
-	}
-	log.Info("auto-created repo hooks: %s", hooksFile)
-
-	return nil
-}
-
-// silentMergeRepoHooksJSON creates or merges hookflow hooks into hooks.json without stdout output.
-func silentMergeRepoHooksJSON(path string) error {
-	hookflowPreHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type preToolUse",
-		"powershell": "gh hookflow run --raw --event-type preToolUse",
-		"timeoutSec": 1800,
-	}
-	hookflowPostHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       "gh hookflow run --raw --event-type postToolUse",
-		"powershell": "gh hookflow run --raw --event-type postToolUse",
-		"timeoutSec": 1800,
-	}
-	sessionStartHook := map[string]interface{}{
-		"type":       "command",
-		"bash":       `gh hookflow check-setup || { gh extension install htekdev/gh-hookflow && gh hookflow init; }`,
-		"powershell": `gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { gh extension install htekdev/gh-hookflow; gh hookflow init }`,
-		"timeoutSec": 1800,
-		"comment":    "Run setup check; if it fails, install the extension and init global settings",
-	}
-
-	config := map[string]interface{}{
-		"version": 1,
-		"hooks":   map[string]interface{}{},
-	}
-
-	if data, err := os.ReadFile(path); err == nil {
-		if jsonErr := json.Unmarshal(data, &config); jsonErr != nil {
-			_ = os.Rename(path, path+".bak")
-		}
-	}
-
-	hooks, ok := config["hooks"].(map[string]interface{})
-	if !ok {
-		hooks = map[string]interface{}{}
-		config["hooks"] = hooks
-	}
-
-	preToolUse := getHookArray(hooks, "preToolUse")
-	if !containsHookflowHook(preToolUse) {
-		preToolUse = removeHookflowHooks(preToolUse)
-		preToolUse = append(preToolUse, hookflowPreHook)
-		hooks["preToolUse"] = preToolUse
-	}
-
-	postToolUse := getHookArray(hooks, "postToolUse")
-	if !containsHookflowHook(postToolUse) {
-		postToolUse = removeHookflowHooks(postToolUse)
-		postToolUse = append(postToolUse, hookflowPostHook)
-		hooks["postToolUse"] = postToolUse
-	}
-
-	sessionStart := getHookArray(hooks, "sessionStart")
-	if !containsHookflowHook(sessionStart) {
-		sessionStart = removeHookflowHooks(sessionStart)
-		sessionStart = append(sessionStart, sessionStartHook)
-		hooks["sessionStart"] = sessionStart
-	}
-
-	jsonBytes, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal hooks.json: %w", err)
-	}
-
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write hooks.json: %w", err)
-	}
-
-	return nil
-}
 
 // contains is a simple substring check
 func contains(s, substr string) bool {

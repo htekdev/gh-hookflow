@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -395,13 +396,24 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	var raw struct {
 		ToolName  string `json:"toolName"`
 		SessionID string `json:"sessionId"`
+		Cwd       string `json:"cwd"`
 	}
 	_ = json.Unmarshal(input, &raw)
 	if raw.SessionID != "" && os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
-		if dir, err := session.SessionDirForID(raw.SessionID); err == nil {
-			_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
-			log.Debug("set session dir from sessionId: %s", dir)
+		if sessionDir, err := session.SessionDirForID(raw.SessionID); err == nil {
+			_ = os.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+			log.Debug("set session dir from sessionId: %s", sessionDir)
 		}
+	}
+
+	// ── Hook input cwd override ────────────────────────────────────
+	// The hook input cwd is the authoritative workspace/repo root set
+	// by Copilot CLI. Use it instead of os.Getwd() — critical for
+	// global/plugin hooks where the process cwd may differ from the
+	// actual repo root.
+	if raw.Cwd != "" {
+		dir = normalizeMSYSPath(raw.Cwd)
+		log.Debug("using hook input cwd as dir: %s", dir)
 	}
 
 	// ── Global dedup check ─────────────────────────────────────────
@@ -654,26 +666,23 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	// ── Repo compliance check (global-only mode) ────────────────────
 	// When running from global/plugin hooks, check if the repo has
 	// hookflow entries in .github/hooks/hooks.json. If hookflows exist
-	// but hooks.json doesn't have hookflow entries, auto-initialize
-	// the repo hooks so workflows are properly triggered going forward.
+	// but hooks.json doesn't have hookflow entries, deny and instruct
+	// the agent to run gh hookflow init. We deny instead of silently
+	// auto-creating because files created without the agent's knowledge
+	// may be reverted by the agent as unexpected changes.
 	if global && len(workflowFiles) > 0 {
 		repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
 		if !hasHookflowHooks(repoHooksFile) {
-			// Check if the agent is running hookflow init — allow that through
+			// Allow hookflow init through so the agent can fix the issue
 			if !isHookflowInitCommand(evt) {
-				log.Info("repo has hookflows but missing hooks.json — auto-initializing")
-				if err := silentAutoInit(dir); err != nil {
-					log.Error("auto-init failed: %v", err)
-					result := schema.NewDenyResult(
-						"This repo has hookflow workflows in .github/hookflows/ but auto-initialization failed.\n\n" +
-							"Run manually: gh hookflow init\n\n" +
-							"Error: " + err.Error())
-					return outputWorkflowResult(result)
-				}
-				log.Info("auto-init complete — repo hooks created, continuing workflow processing")
-			} else {
-				log.Debug("allowing hookflow init command through compliance check")
+				log.Info("repo has hookflows but hookflow not initialized — denying until init")
+				result := schema.NewDenyResult(
+					"This repo has hookflow workflows in .github/hookflows/ but hookflow has not been initialized.\n\n" +
+						"Run: gh hookflow init\n\n" +
+						"This will create .github/hooks/hooks.json so hookflow can enforce your workflows.")
+				return outputWorkflowResult(result)
 			}
+			log.Debug("allowing hookflow init command through compliance check")
 		}
 	}
 
@@ -1131,6 +1140,26 @@ func extractToolArgsPath(input []byte) string {
 }
 
 // normalizeFilePath converts an absolute file path to a relative path from dir
+// normalizeMSYSPath converts MSYS/Git-bash style paths to native Windows paths.
+// On Windows, bash's $(pwd) returns paths like /d/a/repo instead of D:/a/repo.
+// These MSYS paths are invalid for Go's os/filepath functions, so we convert them.
+// On non-Windows systems this is a no-op.
+func normalizeMSYSPath(p string) string {
+	if runtime.GOOS != "windows" {
+		return p
+	}
+	// Match /X/ or /X where X is a single drive letter
+	if len(p) >= 2 && p[0] == '/' && ((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z')) {
+		if len(p) == 2 {
+			return strings.ToUpper(string(p[1])) + ":/"
+		}
+		if p[2] == '/' {
+			return strings.ToUpper(string(p[1])) + ":" + p[2:]
+		}
+	}
+	return p
+}
+
 // This ensures workflow path patterns (like 'plugin.json') match correctly
 func normalizeFilePath(filePath, dir string) string {
 	// Normalize path separators for cross-platform compatibility
