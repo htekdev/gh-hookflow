@@ -28,6 +28,20 @@ func MarkRepoHooksActive() error {
 	return os.WriteFile(path, []byte(""), 0644)
 }
 
+// ClearRepoHooksActive removes the marker file, used when the marker is stale
+// (e.g., hooks.json was deleted mid-session).
+func ClearRepoHooksActive() error {
+	path, err := repoHooksActivePath()
+	if err != nil {
+		return err
+	}
+	err = os.Remove(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 // IsRepoHooksActive returns true if the marker file exists for the current session.
 func IsRepoHooksActive() (bool, error) {
 	path, err := repoHooksActivePath()
