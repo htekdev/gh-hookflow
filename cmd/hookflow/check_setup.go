@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/htekdev/gh-hookflow/internal/logging"
+	"github.com/htekdev/gh-hookflow/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +35,25 @@ func init() {
 }
 
 func runCheckSetup(cmd *cobra.Command, args []string) error {
+	log := logging.Context("check-setup")
+
+	// Read stdin to extract sessionId from hook event payload.
+	// sessionStart hooks receive event data with sessionId on stdin.
+	input, _ := io.ReadAll(os.Stdin)
+	if len(input) > 0 {
+		var raw struct {
+			SessionID string `json:"sessionId"`
+		}
+		if err := json.Unmarshal(input, &raw); err == nil && raw.SessionID != "" {
+			if os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
+				if dir, err := session.SessionDirForID(raw.SessionID); err == nil {
+					_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
+					log.Debug("set session dir from sessionId: %s", dir)
+				}
+			}
+		}
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -64,6 +86,19 @@ func runCheckSetup(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Println("✗ MCP server not registered - run 'hookflow init'")
 		allPassed = false
+	}
+
+	// Toggle sentinel file for global-only mode detection.
+	// First call (global sessionStart) creates it; second call (repo sessionStart) deletes it.
+	created, err := session.ToggleSentinel()
+	if err != nil {
+		log.Warn("failed to toggle sentinel: %v", err)
+	} else if created {
+		log.Debug("sentinel created (global-only mode)")
+		fmt.Println("✓ Global-only sentinel created")
+	} else {
+		log.Debug("sentinel removed (repo hooks active)")
+		fmt.Println("✓ Repo hooks detected, sentinel removed")
 	}
 
 	if !allPassed {

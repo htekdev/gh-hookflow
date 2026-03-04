@@ -36,6 +36,9 @@ func TestGetSessionDir_NoCopilot(t *testing.T) {
 }
 
 func TestGetErrorFilePath(t *testing.T) {
+	// Unset HOOKFLOW_SESSION_DIR so we test PID-based resolution
+	t.Setenv("HOOKFLOW_SESSION_DIR", "")
+
 	// Skip if not running under Copilot
 	pid, err := GetCopilotPID()
 	if err != nil {
@@ -307,7 +310,24 @@ func TestCleanupStaleSessions_MixedEntries(t *testing.T) {
 	}
 }
 
+func TestGetSessionDir_EnvVarTakesPriority(t *testing.T) {
+	customDir := filepath.Join(os.TempDir(), "hookflow-test-session")
+	t.Setenv("HOOKFLOW_SESSION_DIR", customDir)
+
+	dir, err := GetSessionDir()
+	if err != nil {
+		t.Fatalf("GetSessionDir() failed: %v", err)
+	}
+
+	if dir != customDir {
+		t.Errorf("GetSessionDir() = %q, want %q (HOOKFLOW_SESSION_DIR should take priority)", dir, customDir)
+	}
+}
+
 func TestGetSessionDir_ReturnsPath(t *testing.T) {
+	// Unset HOOKFLOW_SESSION_DIR so we test PID-based resolution
+	t.Setenv("HOOKFLOW_SESSION_DIR", "")
+
 	pid, err := GetCopilotPID()
 	if err != nil {
 		t.Skip("Not running under Copilot")

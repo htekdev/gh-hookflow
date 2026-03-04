@@ -255,6 +255,7 @@ Use --event to pass a pre-built event JSON (legacy mode).`,
 		dir, _ := cmd.Flags().GetString("dir")
 		raw, _ := cmd.Flags().GetBool("raw")
 		eventType, _ := cmd.Flags().GetString("event-type")
+		global, _ := cmd.Flags().GetBool("global")
 
 		// Convert event type to lifecycle
 		lifecycle := eventTypeToLifecycle(eventType)
@@ -274,7 +275,7 @@ Use --event to pass a pre-built event JSON (legacy mode).`,
 
 		// If --raw flag is set, use the new event detection
 		if raw {
-			return runWithRawInput(dir, eventStr, lifecycle)
+			return runWithRawInput(dir, eventStr, lifecycle, global)
 		}
 
 		// Legacy mode: pre-built event JSON
@@ -318,6 +319,7 @@ func init() {
 	runCmd.Flags().StringP("dir", "d", "", "Directory to search (default: current directory)")
 	runCmd.Flags().BoolP("raw", "r", false, "Accept raw hook input and auto-detect event type")
 	runCmd.Flags().StringP("event-type", "t", "preToolUse", "Hook event type: preToolUse or postToolUse")
+	runCmd.Flags().Bool("global", false, "Running from global hooks (checks sentinel for global-only mode)")
 
 	// logs flags
 	logsCmd.Flags().IntP("tail", "n", 50, "Number of lines to show")
@@ -359,9 +361,9 @@ func runWorkflow(dir, workflowName string) error {
 }
 
 // runWithRawInput handles raw Copilot hook input and auto-detects event type
-func runWithRawInput(dir, inputStr, lifecycle string) error {
+func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	log := logging.Context("run")
-	done := logging.StartOperation("runWithRawInput", "dir="+dir, "lifecycle="+lifecycle)
+	done := logging.StartOperation("runWithRawInput", "dir="+dir, "lifecycle="+lifecycle, fmt.Sprintf("global=%v", global))
 
 	// Read from stdin if "-"
 	var input []byte
@@ -400,6 +402,24 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 			_ = os.Setenv("HOOKFLOW_SESSION_DIR", dir)
 			log.Debug("set session dir from sessionId: %s", dir)
 		}
+	}
+
+	// ── Global sentinel check ───────────────────────────────────────
+	// When invoked with --global (from global hooks.json), check the
+	// sentinel file. If sentinel doesn't exist, repo hooks handle it —
+	// skip processing to avoid double-execution.
+	if global {
+		hasSentinel, err := session.HasSentinel()
+		if err != nil {
+			log.Warn("failed to check sentinel: %v", err)
+		}
+		if !hasSentinel {
+			log.Debug("global mode: no sentinel, skipping (repo hooks active)")
+			result := schema.NewAllowResult()
+			done(nil)
+			return outputWorkflowResult(result)
+		}
+		log.Debug("global mode: sentinel present, processing (global-only)")
 	}
 
 	// ── Error file read exemption ───────────────────────────────────
@@ -459,7 +479,7 @@ func runWithRawInput(dir, inputStr, lifecycle string) error {
 	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
 
 	// Discover and run matching workflows
-	err = runMatchingWorkflowsWithEvent(dir, evt)
+	err = runMatchingWorkflowsWithEvent(dir, evt, global)
 	done(err)
 	return err
 }
@@ -519,10 +539,30 @@ var (
 	primitiveGitPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+push\b`)
 	// Matches two or more git commands chained via &&, ;, newlines, or pipes
 	primitiveMultiGitPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+\w+.*(?:&&|;|\n).*git\s+\w+`)
+	// Matches "hookflow init" in a command (for compliance check exemption)
+	hookflowInitPattern = regexp.MustCompile(`(?i)hookflow\s+init\b`)
 )
 
+// isHookflowInitCommand checks if the event represents a hookflow init command.
+func isHookflowInitCommand(evt *schema.Event) bool {
+	if evt.Tool == nil {
+		return false
+	}
+	// Check tool args for command/script/code containing "hookflow init"
+	for _, key := range []string{"command", "script", "code"} {
+		if val, ok := evt.Tool.Args[key]; ok {
+			if str, ok := val.(string); ok {
+				if hookflowInitPattern.MatchString(str) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // runMatchingWorkflowsWithEvent runs workflows with a pre-built event
-func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
+func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) error {
 	log := logging.Context("matcher")
 
 	// Block direct git push (belt-and-suspenders — also checked in primitiveGuards)
@@ -594,6 +634,28 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event) error {
 	}
 
 	log.Debug("found %d workflow files in %s", len(workflowFiles), workflowDir)
+
+	// ── Repo compliance check (global-only mode) ────────────────────
+	// When running from global hooks with sentinel active, check if the
+	// repo has hookflow entries in .github/hooks/hooks.json. If hookflows
+	// exist but hooks.json doesn't have hookflow entries, deny and tell
+	// the agent to run gh hookflow init (unless the current tool call IS
+	// hookflow init).
+	if global && len(workflowFiles) > 0 {
+		repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
+		if !hasHookflowHooks(repoHooksFile) {
+			// Check if the agent is running hookflow init — allow that through
+			if !isHookflowInitCommand(evt) {
+				log.Info("repo has hookflows but missing hooks.json — denying")
+				result := schema.NewDenyResult(
+					"This repo has hookflow workflows in .github/hookflows/ but hasn't been initialized.\n\n" +
+						"Run: gh hookflow init\n\n" +
+						"This will create .github/hooks/hooks.json so hookflow workflows are properly triggered.")
+				return outputWorkflowResult(result)
+			}
+			log.Debug("allowing hookflow init command through compliance check")
+		}
+	}
 
 	if len(workflowFiles) == 0 {
 		// No workflows found, allow by default

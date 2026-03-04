@@ -72,8 +72,7 @@ func runGitPush(dir string, gitArgs []string) error {
 	out := map[string]interface{}{
 		"activity_id": act.ID,
 		"status":      "running",
-		"message":     "Git push started. Pre-push workflows are running.",
-		"next_step":   fmt.Sprintf("Use 'hookflow git-push-status %s' to check progress.", act.ID),
+		"message":     fmt.Sprintf("Git push has started. You MUST now call 'gh hookflow git-push-status %s' to check progress. You are NOT done — do NOT report success or failure until you have checked the status.", act.ID),
 	}
 	jsonBytes, _ := json.MarshalIndent(out, "", "  ")
 	fmt.Println(string(jsonBytes))

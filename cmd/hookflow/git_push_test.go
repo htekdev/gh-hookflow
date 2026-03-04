@@ -55,7 +55,7 @@ steps:
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runMatchingWorkflowsWithEvent(tmpDir, evt)
+	err := runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = w.Close()
 	os.Stdout = oldStdout
@@ -105,7 +105,7 @@ func TestGitPushNotBlockedForPost(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runMatchingWorkflowsWithEvent(tmpDir, evt)
+	err := runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = w.Close()
 	os.Stdout = oldStdout

@@ -870,7 +870,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -926,7 +926,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -989,7 +989,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1051,7 +1051,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1109,7 +1109,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1178,7 +1178,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1213,7 +1213,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1284,7 +1284,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1320,7 +1320,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1384,7 +1384,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1456,7 +1456,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1516,7 +1516,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1575,7 +1575,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1634,7 +1634,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -1692,7 +1692,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1720,7 +1720,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1748,7 +1748,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1823,7 +1823,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1852,7 +1852,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1910,7 +1910,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -1937,7 +1937,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -2015,7 +2015,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -2048,7 +2048,7 @@ steps:
 		stdoutR, stdoutW, _ := os.Pipe()
 		os.Stdout = stdoutW
 
-		_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+		_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 		_ = stdoutW.Close()
 		os.Stdout = oldStdout
@@ -2219,7 +2219,7 @@ steps:
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -2412,7 +2412,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -2534,7 +2534,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -2639,7 +2639,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -2750,7 +2750,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3085,7 +3085,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3234,7 +3234,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3383,7 +3383,7 @@ steps:
 					stdoutR, stdoutW, _ := os.Pipe()
 					os.Stdout = stdoutW
 
-					_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+					_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 					_ = stdoutW.Close()
 					os.Stdout = oldStdout
@@ -3542,7 +3542,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3672,7 +3672,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3795,7 +3795,7 @@ steps:
 			stdoutR, stdoutW, _ := os.Pipe()
 			os.Stdout = stdoutW
 
-			_ = runMatchingWorkflowsWithEvent(tmpDir, evt)
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
 
 			_ = stdoutW.Close()
 			os.Stdout = oldStdout
@@ -3815,4 +3815,279 @@ steps:
 			}
 		})
 	}
+}
+
+// TestGlobalFlagSkipsWhenNoSentinel tests that --global mode skips processing
+// when the sentinel file doesn't exist (repo hooks are active).
+func TestGlobalFlagSkipsWhenNoSentinel(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-global-skip-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+// Create a workflow that would deny
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: block-all\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: exit 1\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "block.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+hooksDir := filepath.Join(tmpDir, ".github", "hooks")
+if err := os.MkdirAll(hooksDir, 0755); err != nil {
+t.Fatal(err)
+}
+hooksJSON := `{"version":1,"hooks":{"preToolUse":[{"bash":"gh hookflow run --raw --event-type preToolUse"}]}}`
+if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), []byte(hooksJSON), 0644); err != nil {
+t.Fatal(err)
+}
+
+// No sentinel file -> global mode should skip and allow
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+if !strings.Contains(output, "allow") {
+t.Errorf("Expected allow when no sentinel in global mode, got: %s", output)
+}
+}
+
+// TestGlobalFlagProcessesWithSentinel tests that --global mode processes events
+// when the sentinel file exists (global-only mode).
+func TestGlobalFlagProcessesWithSentinel(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-global-process-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: allow-all\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "allow.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+hooksDir := filepath.Join(tmpDir, ".github", "hooks")
+if err := os.MkdirAll(hooksDir, 0755); err != nil {
+t.Fatal(err)
+}
+hooksJSON := `{"version":1,"hooks":{"preToolUse":[{"bash":"gh hookflow run --raw --event-type preToolUse"}]}}`
+if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), []byte(hooksJSON), 0644); err != nil {
+t.Fatal(err)
+}
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+if !strings.Contains(output, "allow") {
+t.Errorf("Expected allow with sentinel in global mode, got: %s", output)
+}
+}
+
+// TestGlobalComplianceCheckDeniesWhenNoRepoHooks tests that global mode denies
+// when hookflows exist but repo hooks.json doesn't have hookflow entries.
+func TestGlobalComplianceCheckDeniesWhenNoRepoHooks(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-compliance-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: test\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "test.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+
+evt := &schema.Event{
+File: &schema.FileEvent{
+Path:   "test.txt",
+Action: "create",
+},
+Cwd:       tmpDir,
+Lifecycle: "pre",
+}
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+_ = runMatchingWorkflowsWithEvent(tmpDir, evt, true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+if !strings.Contains(output, "deny") {
+t.Errorf("Expected deny for missing repo hooks, got: %s", output)
+}
+if !strings.Contains(output, "hookflow init") {
+t.Errorf("Expected 'hookflow init' in deny message, got: %s", output)
+}
+}
+
+// TestGlobalComplianceExemptsHookflowInit tests that the compliance check
+// allows hookflow init commands through even without repo hooks.json.
+func TestGlobalComplianceExemptsHookflowInit(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-init-exempt-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: test\non:\n  hooks:\n    types: [preToolUse]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "test.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+
+evt := &schema.Event{
+Tool: &schema.ToolEvent{
+Name: "powershell",
+Args: map[string]interface{}{
+"command": "gh hookflow init",
+},
+},
+Cwd:       tmpDir,
+Lifecycle: "pre",
+}
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+_ = runMatchingWorkflowsWithEvent(tmpDir, evt, true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+if !strings.Contains(output, "allow") {
+t.Errorf("Expected allow for hookflow init command, got: %s", output)
+}
+}
+
+// TestIsHookflowInitCommand tests the hookflow init command detection.
+func TestIsHookflowInitCommand(t *testing.T) {
+tests := []struct {
+name   string
+evt    *schema.Event
+expect bool
+}{
+{
+name: "gh hookflow init command",
+evt: &schema.Event{
+Tool: &schema.ToolEvent{
+Name: "powershell",
+Args: map[string]interface{}{"command": "gh hookflow init"},
+},
+},
+expect: true,
+},
+{
+name: "hookflow init with flags",
+evt: &schema.Event{
+Tool: &schema.ToolEvent{
+Name: "bash",
+Args: map[string]interface{}{"command": "gh hookflow init --force --repo"},
+},
+},
+expect: true,
+},
+{
+name: "not hookflow init",
+evt: &schema.Event{
+Tool: &schema.ToolEvent{
+Name: "powershell",
+Args: map[string]interface{}{"command": "git status"},
+},
+},
+expect: false,
+},
+{
+name:   "no tool event",
+evt:    &schema.Event{},
+expect: false,
+},
+{
+name: "hookflow init in script arg",
+evt: &schema.Event{
+Tool: &schema.ToolEvent{
+Name: "bash",
+Args: map[string]interface{}{"script": "gh hookflow init"},
+},
+},
+expect: true,
+},
+}
+
+for _, tt := range tests {
+t.Run(tt.name, func(t *testing.T) {
+got := isHookflowInitCommand(tt.evt)
+if got != tt.expect {
+t.Errorf("isHookflowInitCommand() = %v, want %v", got, tt.expect)
+}
+})
+}
 }
