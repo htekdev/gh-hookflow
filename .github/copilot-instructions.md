@@ -13,6 +13,38 @@ This repository contains the `hookflow` CLI - a local workflow engine for agenti
 
 Use `store_memory` proactively so future sessions don't repeat the same mistakes.
 
+## Testing Standards
+
+**Tests must be extensive.** This is non-negotiable:
+- Every code change must have thorough tests covering happy path, edge cases, and error conditions
+- Never write a minimal test that only checks the "works" case — test boundaries, invalid inputs, platform differences, and failure modes
+- Unit tests must cover all branches and conditions, not just the primary flow
+- E2E tests must pass on **all three platforms** (ubuntu, macos, windows) before a PR is approved — no exceptions, no dismissing failures as "pre-existing"
+- If a test fails after your change, **you caused it** until you prove otherwise with evidence. Do not blame pre-existing issues without investigation.
+- When adding new functions, add tests immediately — not as a follow-up
+
+## Saving Memories
+
+**Always use `store_memory`** when you encounter:
+- Bugs and their root causes (so future sessions don't repeat them)
+- Cross-platform gotchas (path separators, OS-specific behavior, MSYS paths, etc.)
+- CI/CD quirks and requirements
+- Patterns that work or don't work in this codebase
+- Any "lesson learned" from a debugging session
+
+**Never store incorrect or lazy memories.** If you don't know the root cause, investigate first. A wrong memory is worse than no memory.
+
+## DO NOT DO
+
+These are bad practices that have been caught in this codebase. **Never repeat them:**
+
+1. **DO NOT dismiss CI failures as "pre-existing" without investigation.** If a test was passing before your change and fails after, your change caused it. Investigate the actual root cause.
+2. **DO NOT store memories with incorrect root cause analysis.** Verify your diagnosis before committing it to memory. Wrong memories mislead future sessions.
+3. **DO NOT write minimal tests.** Tests must be extensive and cover edge cases, not just prove "it compiles."
+4. **DO NOT leave platform-specific bugs unresolved.** Windows, macOS, and Linux must all pass. Cross-platform issues (like MSYS path conversion) are real bugs, not flakiness.
+5. **DO NOT use `TODO`, `FIXME`, stubs, or placeholder implementations.** Everything must be fully implemented.
+6. **DO NOT swallow errors silently.** Every error return must be explicitly handled or ignored with `_ =` (required by golangci-lint).
+
 ## Architecture
 
 ```
