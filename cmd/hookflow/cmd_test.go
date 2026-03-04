@@ -3921,9 +3921,9 @@ t.Errorf("Expected allow with global-only mode, got: %s", output)
 }
 }
 
-// TestGlobalComplianceCheckDeniesWhenNoRepoHooks tests that global mode denies
+// TestGlobalComplianceAutoInitsWhenNoRepoHooks tests that global mode auto-initializes
 // when hookflows exist but repo hooks.json doesn't have hookflow entries.
-func TestGlobalComplianceCheckDeniesWhenNoRepoHooks(t *testing.T) {
+func TestGlobalComplianceAutoInitsWhenNoRepoHooks(t *testing.T) {
 tmpDir, err := os.MkdirTemp("", "hookflow-compliance-*")
 if err != nil {
 t.Fatal(err)
@@ -3933,9 +3933,7 @@ defer func() { _ = os.RemoveAll(tmpDir) }()
 sessionDir := t.TempDir()
 t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
 
-if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
-t.Fatal(err)
-}
+// No repo-hooks-active marker → global mode processes events
 
 workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
 if err := os.MkdirAll(workflowDir, 0755); err != nil {
@@ -3968,11 +3966,23 @@ var buf bytes.Buffer
 _, _ = buf.ReadFrom(stdoutR)
 output := buf.String()
 
-if !strings.Contains(output, "deny") {
-t.Errorf("Expected deny for missing repo hooks, got: %s", output)
+// Should auto-init and allow (not deny)
+if strings.Contains(output, "deny") && strings.Contains(output, "hasn't been initialized") {
+t.Errorf("Expected auto-init (allow), but got deny: %s", output)
 }
-if !strings.Contains(output, "hookflow init") {
-t.Errorf("Expected 'hookflow init' in deny message, got: %s", output)
+
+// Verify hooks.json was auto-created
+hooksFile := filepath.Join(tmpDir, ".github", "hooks", "hooks.json")
+if _, statErr := os.Stat(hooksFile); os.IsNotExist(statErr) {
+t.Error("Expected hooks.json to be auto-created, but it doesn't exist")
+}
+
+// Verify hooks.json contains hookflow entries
+if data, readErr := os.ReadFile(hooksFile); readErr == nil {
+hookStr := string(data)
+if !strings.Contains(hookStr, "hookflow") {
+t.Errorf("Expected hooks.json to contain hookflow entries, got: %s", hookStr)
+}
 }
 }
 
@@ -3988,9 +3998,7 @@ defer func() { _ = os.RemoveAll(tmpDir) }()
 sessionDir := t.TempDir()
 t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
 
-if err := os.WriteFile(filepath.Join(sessionDir, "global-only"), []byte(""), 0644); err != nil {
-t.Fatal(err)
-}
+// No repo-hooks-active marker → global mode processes events
 
 workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
 if err := os.MkdirAll(workflowDir, 0755); err != nil {

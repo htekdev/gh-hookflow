@@ -647,22 +647,26 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	// ── Repo compliance check (global-only mode) ────────────────────
 	// When running from global/plugin hooks, check if the repo has
 	// hookflow entries in .github/hooks/hooks.json. If hookflows exist
-	// but hooks.json doesn't have hookflow entries, deny and tell the
-	// agent to run gh hookflow init (unless the current tool call IS
-	// hookflow init).
+	// but hooks.json doesn't have hookflow entries, auto-initialize
+	// the repo hooks so workflows are properly triggered going forward.
 	if global && len(workflowFiles) > 0 {
 		repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
 		if !hasHookflowHooks(repoHooksFile) {
 			// Check if the agent is running hookflow init — allow that through
 			if !isHookflowInitCommand(evt) {
-				log.Info("repo has hookflows but missing hooks.json — denying")
-				result := schema.NewDenyResult(
-					"This repo has hookflow workflows in .github/hookflows/ but hasn't been initialized.\n\n" +
-						"Run: gh hookflow init\n\n" +
-						"This will create .github/hooks/hooks.json so hookflow workflows are properly triggered.")
-				return outputWorkflowResult(result)
+				log.Info("repo has hookflows but missing hooks.json — auto-initializing")
+				if err := silentAutoInit(dir); err != nil {
+					log.Error("auto-init failed: %v", err)
+					result := schema.NewDenyResult(
+						"This repo has hookflow workflows in .github/hookflows/ but auto-initialization failed.\n\n" +
+							"Run manually: gh hookflow init\n\n" +
+							"Error: " + err.Error())
+					return outputWorkflowResult(result)
+				}
+				log.Info("auto-init complete — repo hooks created, continuing workflow processing")
+			} else {
+				log.Debug("allowing hookflow init command through compliance check")
 			}
-			log.Debug("allowing hookflow init command through compliance check")
 		}
 	}
 
