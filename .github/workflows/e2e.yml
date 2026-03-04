@@ -524,8 +524,8 @@ jobs:
           echo "✅ PASS: Repo hooks marker prevents global double-processing"
           rm -rf $HOOKFLOW_SESSION_DIR
 
-      # ── Test 17: Global compliance auto-init ────────────────────
-      - name: 'Test 17a: Global mode auto-inits when hookflows exist but no repo hooks.json'
+      # ── Test 17: Global compliance deny ────────────────────
+      - name: 'Test 17a: Global mode denies when hookflows exist but no repo hooks.json'
         shell: bash
         env:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test17
@@ -548,12 +548,15 @@ jobs:
           echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
             | hookflow run --raw --event-type preToolUse --global --dir "$COMPLIANCE_DIR" > $RUNNER_TEMP/e2e-test17a.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test17a.json
-          # Should auto-init and allow (not deny)
-          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test17a.json
-          # Verify hooks.json was auto-created
-          test -f "$COMPLIANCE_DIR/.github/hooks/hooks.json"
-          grep -q "hookflow" "$COMPLIANCE_DIR/.github/hooks/hooks.json"
-          echo "✅ PASS: Global mode auto-inits repo hooks.json when missing"
+          # Should deny and instruct to run gh hookflow init
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test17a.json
+          grep -q "gh hookflow init" $RUNNER_TEMP/e2e-test17a.json
+          # hooks.json must NOT be auto-created
+          if [ -f "$COMPLIANCE_DIR/.github/hooks/hooks.json" ]; then
+            echo "❌ FAIL: hooks.json should not be auto-created — agent should run init"
+            exit 1
+          fi
+          echo "✅ PASS: Global mode denies when hookflows exist but not initialized"
           rm -rf "$COMPLIANCE_DIR" $HOOKFLOW_SESSION_DIR
 
       - name: 'Test 17b: Global compliance exempts hookflow init command'
@@ -606,7 +609,7 @@ jobs:
           echo "✅ PASS: No hookflows → global allows, no hooks.json created"
           rm -rf "$EMPTY_DIR" $HOOKFLOW_SESSION_DIR
 
-      - name: 'Test 18b: Hookflows exist but no hooks.json → auto-init creates hooks.json'
+      - name: 'Test 18b: Hookflows exist but no hooks.json → global denies with init instructions'
         shell: bash
         env:
           HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test18b
@@ -626,11 +629,15 @@ jobs:
           echo "{\"toolName\":\"create\",\"toolArgs\":{\"path\":\"test.txt\",\"file_text\":\"hello\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
             | hookflow run --raw --event-type preToolUse --global --dir "$AUTOINIT_DIR" > $RUNNER_TEMP/e2e-test18b.json 2>&1 || true
           cat $RUNNER_TEMP/e2e-test18b.json
-          grep -qE '"permissionDecision":\s*"allow"' $RUNNER_TEMP/e2e-test18b.json
-          # hooks.json must now exist with hookflow entries
-          test -f "$AUTOINIT_DIR/.github/hooks/hooks.json"
-          grep -q "hookflow" "$AUTOINIT_DIR/.github/hooks/hooks.json"
-          echo "✅ PASS: Hookflows exist → auto-init creates hooks.json"
+          # Should deny and instruct to run gh hookflow init
+          grep -qE '"permissionDecision":\s*"deny"' $RUNNER_TEMP/e2e-test18b.json
+          grep -q "gh hookflow init" $RUNNER_TEMP/e2e-test18b.json
+          # hooks.json must NOT be auto-created
+          if [ -f "$AUTOINIT_DIR/.github/hooks/hooks.json" ]; then
+            echo "❌ FAIL: hooks.json should not be auto-created"
+            exit 1
+          fi
+          echo "✅ PASS: Hookflows exist → global denies with init instructions"
           rm -rf "$AUTOINIT_DIR" $HOOKFLOW_SESSION_DIR
 
       - name: 'Test 18c: Hookflows + hooks.json but no repo-active sentinel → global processes and blocks'
@@ -689,6 +696,6 @@ jobs:
           echo "  Test 14:     Copilot CLI post-error feedback loop (conditional)"
           echo "  Test 15a-c:  Primitive guards (git push, multi-git)"
           echo "  Test 16a-c:  Global hooks sentinel toggle"
-          echo "  Test 17a-b:  Global compliance auto-init"
-          echo "  Test 18a-c:  Global auto-init scenarios"
+          echo "  Test 17a-b:  Global compliance deny"
+          echo "  Test 18a-c:  Global compliance scenarios"
           echo "════════════════════════════════════════"
