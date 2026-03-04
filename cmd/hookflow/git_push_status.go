@@ -62,30 +62,7 @@ func runGitPushStatus(activityID string) error {
 		message = strings.Join(parts, " ")
 
 	case activity.StatusFailed:
-		if ps, ok := act.Phases[activity.PhasePrePush]; ok && ps.Status == activity.StatusFailed {
-			message = fmt.Sprintf(
-				"Push FAILED: pre-push workflows denied the push. "+
-					"You MUST investigate the failure and take corrective action. "+
-					"Check the activity logs: gh hookflow git-push-status %s. "+
-					"Do NOT simply report that the push failed — fix the issue and retry.",
-				activityID)
-		} else if ps, ok := act.Phases[activity.PhasePush]; ok && ps.Status == activity.StatusFailed {
-			message = fmt.Sprintf(
-				"Push FAILED: git push itself failed. Output: %s. "+
-					"You MUST investigate and resolve the git error before retrying. "+
-					"Do NOT simply report that the push failed — fix the issue and retry.",
-				ps.Output)
-		} else if ps, ok := act.Phases[activity.PhasePostPush]; ok && ps.Status == activity.StatusFailed {
-			message = fmt.Sprintf(
-				"Push succeeded but post-push checks FAILED (%d workflow(s)). "+
-					"The code is pushed but post-push validation detected issues. "+
-					"You MUST investigate the post-push failures and take corrective action. "+
-					"Do NOT simply report that it failed — review the errors and address them.",
-				len(ps.Workflows))
-		} else {
-			message = "Push FAILED. You MUST investigate the failure and take corrective action. " +
-				"Do NOT simply report that the push failed."
-		}
+		message = buildFailureMessage(act, activityID)
 
 	default:
 		message = fmt.Sprintf(
@@ -95,4 +72,86 @@ func runGitPushStatus(activityID string) error {
 
 	fmt.Println(message)
 	return nil
+}
+
+// buildFailureMessage constructs a detailed failure message including
+// per-workflow errors and log output so the agent can diagnose the issue.
+func buildFailureMessage(act *activity.Activity, activityID string) string {
+	var b strings.Builder
+
+	if ps, ok := act.Phases[activity.PhasePrePush]; ok && ps.Status == activity.StatusFailed {
+		b.WriteString("Push FAILED: pre-push workflows denied the push.\n\n")
+		writePhaseDetails(&b, ps)
+		writePhaseLogs(&b, act, activity.PhasePrePush)
+	} else if ps, ok := act.Phases[activity.PhasePush]; ok && ps.Status == activity.StatusFailed {
+		b.WriteString("Push FAILED: git push itself failed.\n\n")
+		if ps.Output != "" {
+			b.WriteString("Git output:\n")
+			b.WriteString(ps.Output)
+			b.WriteString("\n\n")
+		}
+		if ps.Error != "" {
+			b.WriteString("Error: ")
+			b.WriteString(ps.Error)
+			b.WriteString("\n\n")
+		}
+	} else if ps, ok := act.Phases[activity.PhasePostPush]; ok && ps.Status == activity.StatusFailed {
+		fmt.Fprintf(&b, "Push succeeded but post-push checks FAILED (%d workflow(s)).\n\n", len(ps.Workflows))
+		writePhaseDetails(&b, ps)
+		writePhaseLogs(&b, act, activity.PhasePostPush)
+	} else {
+		b.WriteString("Push FAILED (unknown phase).\n\n")
+	}
+
+	b.WriteString("You MUST investigate the failure details above and take corrective action. ")
+	b.WriteString("Do NOT simply report that it failed — review the errors and address them.")
+
+	return b.String()
+}
+
+// writePhaseDetails writes per-workflow status and errors to the builder.
+func writePhaseDetails(b *strings.Builder, ps *activity.PhaseStatus) {
+	if ps.Error != "" {
+		b.WriteString("Phase error: ")
+		b.WriteString(ps.Error)
+		b.WriteString("\n\n")
+	}
+
+	for _, wf := range ps.Workflows {
+		if wf.Success {
+			fmt.Fprintf(b, "  ✅ %s: passed\n", wf.Name)
+		} else {
+			fmt.Fprintf(b, "  ❌ %s: FAILED", wf.Name)
+			if wf.Error != "" {
+				fmt.Fprintf(b, " — %s", wf.Error)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(ps.Workflows) > 0 {
+		b.WriteString("\n")
+	}
+}
+
+// writePhaseLogs reads and includes the log files for the failed phase.
+func writePhaseLogs(b *strings.Builder, act *activity.Activity, phase activity.Phase) {
+	logs, err := act.ReadLogs()
+	if err != nil || len(logs) == 0 {
+		return
+	}
+
+	prefix := string(phase) + "-"
+	for name, content := range logs {
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		content = strings.TrimSpace(content)
+		if content == "" {
+			continue
+		}
+		fmt.Fprintf(b, "--- Logs: %s ---\n", strings.TrimPrefix(name, prefix))
+		b.WriteString(content)
+		b.WriteString("\n\n")
+	}
 }

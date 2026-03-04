@@ -210,15 +210,18 @@ func (d *Detector) detectEditEvent(event *schema.Event, args *ToolArgs) {
 
 // Git command detection patterns
 // All patterns treat newlines (\n) as command separators alongside &&, ||, ;
+// The flag group (?:-[\w-]+(?:[=\s]\S+)?\s+)* allows global git flags (e.g., -C /path, --no-pager)
+// between "git" and the subcommand, while preventing false positives from matching
+// subcommand names inside quoted arguments (e.g., "push" inside a commit message).
 var (
 	// Matches git commit at start of line or after command separators (&&, ||, ;, \n)
-	gitCommitPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\bcommit\b`)
+	gitCommitPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\s+(?:-[\w-]+(?:[=\s]\S+)?\s+)*commit\b`)
 
 	// Matches git push at start of line or after command separators
-	gitPushPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\bpush\b`)
+	gitPushPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\s+(?:-[\w-]+(?:[=\s]\S+)?\s+)*push\b`)
 
 	// Matches git add at start of line or after command separators
-	gitAddPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\b.*\badd\b`)
+	gitAddPattern = regexp.MustCompile(`(?m)(?:^|&&|\|\||;)\s*git\s+(?:-[\w-]+(?:[=\s]\S+)?\s+)*add\b`)
 
 	// Extracts commit message from -m flag
 	commitMessagePattern = regexp.MustCompile(`-m\s+["']([^"']+)["']|-m\s+(\S+)`)

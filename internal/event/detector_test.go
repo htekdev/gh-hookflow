@@ -37,6 +37,7 @@ func TestIsGitCommitCommand(t *testing.T) {
 		{"empty", "", false},
 		{"unrelated command", "npm install", false},
 		{"comment", "# git commit", false},
+		{"commit in push message", `git push -m "commit changes"`, false}, // "commit" is not a git subcommand here
 	}
 
 	for _, tt := range tests {
@@ -75,6 +76,9 @@ func TestIsGitPushCommand(t *testing.T) {
 		{"git commit", "git commit -m 'msg'", false},
 		{"empty", "", false},
 		{"unrelated command", "npm publish", false},
+		{"push in commit message", `git commit -m "feat: add git push support"`, false},
+		{"push word in commit message", `git commit -m "fix: push notification handler"`, false},
+		{"push in single-quoted message", "git commit -m 'update push logic'", false},
 	}
 
 	for _, tt := range tests {

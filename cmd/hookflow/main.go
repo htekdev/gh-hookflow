@@ -414,10 +414,17 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 			log.Warn("failed to check repo-hooks-active: %v", err)
 		}
 		if repoActive {
-			log.Debug("global mode: repo hooks already active, skipping")
-			result := schema.NewAllowResult()
-			done(nil)
-			return outputWorkflowResult(result)
+			// Verify repo hooks still exist — hooks.json may have been deleted mid-session
+			repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
+			if hasHookflowHooks(repoHooksFile) {
+				log.Debug("global mode: repo hooks already active, skipping")
+				result := schema.NewAllowResult()
+				done(nil)
+				return outputWorkflowResult(result)
+			}
+			// Stale marker: hooks.json was removed mid-session
+			log.Info("global mode: repo-hooks-active marker is stale (hooks.json removed), clearing and processing")
+			_ = session.ClearRepoHooksActive()
 		}
 		log.Debug("global mode: no repo hooks, processing (global-only)")
 	}

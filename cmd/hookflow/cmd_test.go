@@ -3921,6 +3921,74 @@ t.Errorf("Expected allow with global-only mode, got: %s", output)
 }
 }
 
+// TestGlobalComplianceAutoInitsWithStaleMarker tests the mid-session scenario:
+// hooks.json existed (marker was set), then hooks.json was deleted.
+// Global mode should detect the stale marker, clear it, and auto-init.
+func TestGlobalComplianceAutoInitsWithStaleMarker(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-stale-marker-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+// Simulate mid-session: marker exists from when hooks.json was present
+if err := os.WriteFile(filepath.Join(sessionDir, "repo-hooks-active"), []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+
+// Create hookflows (but NO hooks.json — simulates deletion mid-session)
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: test\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "test.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+// Should NOT skip due to stale marker — should auto-init and process
+if strings.Contains(output, "deny") && strings.Contains(output, "hasn't been initialized") {
+t.Errorf("Expected auto-init (allow) despite stale marker, but got deny: %s", output)
+}
+
+// Verify hooks.json was auto-created
+hooksFile := filepath.Join(tmpDir, ".github", "hooks", "hooks.json")
+if _, statErr := os.Stat(hooksFile); os.IsNotExist(statErr) {
+t.Error("Expected hooks.json to be auto-created after stale marker detection, but it doesn't exist")
+}
+
+// Verify hooks.json contains hookflow entries
+if data, readErr := os.ReadFile(hooksFile); readErr == nil {
+hookStr := string(data)
+if !strings.Contains(hookStr, "hookflow") {
+t.Errorf("Expected hooks.json to contain hookflow entries, got: %s", hookStr)
+}
+}
+
+// Verify the stale marker was cleared
+markerPath := filepath.Join(sessionDir, "repo-hooks-active")
+if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+t.Error("Expected stale repo-hooks-active marker to be cleared after auto-init")
+}
+}
+
 // TestGlobalComplianceAutoInitsWhenNoRepoHooks tests that global mode auto-initializes
 // when hookflows exist but repo hooks.json doesn't have hookflow entries.
 func TestGlobalComplianceAutoInitsWhenNoRepoHooks(t *testing.T) {

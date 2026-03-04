@@ -74,3 +74,42 @@ func TestIsRepoHooksActive_NoSessionDir(t *testing.T) {
 		t.Fatal("expected not active for nonexistent dir")
 	}
 }
+
+func TestClearRepoHooksActive(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
+
+	// Mark as active
+	if err := MarkRepoHooksActive(); err != nil {
+		t.Fatalf("MarkRepoHooksActive() error: %v", err)
+	}
+
+	active, _ := IsRepoHooksActive()
+	if !active {
+		t.Fatal("expected repo hooks active after marking")
+	}
+
+	// Clear the marker
+	if err := ClearRepoHooksActive(); err != nil {
+		t.Fatalf("ClearRepoHooksActive() error: %v", err)
+	}
+
+	// Should no longer be active
+	active, err := IsRepoHooksActive()
+	if err != nil {
+		t.Fatalf("IsRepoHooksActive() error after clear: %v", err)
+	}
+	if active {
+		t.Fatal("expected repo hooks not active after clearing")
+	}
+}
+
+func TestClearRepoHooksActive_NoMarker(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
+
+	// Clear when no marker exists should not error
+	if err := ClearRepoHooksActive(); err != nil {
+		t.Fatalf("ClearRepoHooksActive() should not error when no marker: %v", err)
+	}
+}
