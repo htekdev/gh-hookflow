@@ -734,8 +734,8 @@ func TestRunCommandDefaultDir(t *testing.T) {
 	// Just verify it runs - results depend on cwd content
 }
 
-// TestIsHookflowSelfRepair tests the self-repair detection function
-func TestIsHookflowSelfRepair(t *testing.T) {
+// TestIsHookflowRelatedWorkUnit tests the hookflow-related work detection function
+func TestIsHookflowRelatedWorkUnit(t *testing.T) {
 	tests := []struct {
 		name     string
 		event    *schema.Event
@@ -772,17 +772,17 @@ func TestIsHookflowSelfRepair(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "edit to hookflow but not yml",
+			name: "edit to hookflow but not yml - allowed (path contains hookflow)",
 			event: &schema.Event{
 				File: &schema.FileEvent{
 					Path:   ".github/hookflows/README.md",
 					Action: "edit",
 				},
 			},
-			expected: false,
+			expected: true,
 		},
 		{
-			name: "delete hookflow workflow - not allowed for self-repair",
+			name: "delete hookflow workflow - blocked",
 			event: &schema.Event{
 				File: &schema.FileEvent{
 					Path:   ".github/hookflows/my-workflow.yml",
@@ -792,13 +792,21 @@ func TestIsHookflowSelfRepair(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "no file event",
+			name: "no file event, no tool event - blocked",
+			event: &schema.Event{},
+			expected: false,
+		},
+		{
+			name: "view hookflow file via tool - allowed",
 			event: &schema.Event{
 				Tool: &schema.ToolEvent{
-					Name: "edit",
+					Name: "view",
+					Args: map[string]interface{}{
+						"path": ".github/hookflows/workflow.yml",
+					},
 				},
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			name: "nested path in hooks",
@@ -814,7 +822,7 @@ func TestIsHookflowSelfRepair(t *testing.T) {
 			name: "windows-style path",
 			event: &schema.Event{
 				File: &schema.FileEvent{
-					Path:   ".github/hookflows/workflow.yml", // Use forward slashes for cross-platform
+					Path:   ".github/hookflows/workflow.yml",
 					Action: "edit",
 				},
 			},
@@ -824,9 +832,9 @@ func TestIsHookflowSelfRepair(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isHookflowSelfRepair(tt.event, "/test/dir")
+			result := isHookflowRelatedWork(tt.event)
 			if result != tt.expected {
-				t.Errorf("isHookflowSelfRepair() = %v, expected %v", result, tt.expected)
+				t.Errorf("isHookflowRelatedWork() = %v, expected %v", result, tt.expected)
 			}
 		})
 	}
@@ -888,9 +896,10 @@ steps:
 	}
 }
 
-// TestInvalidWorkflowAllowsSelfRepair tests that invalid workflows allow edits to .github/hookflows/
-func TestInvalidWorkflowAllowsSelfRepair(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "hookflow-self-repair-*")
+// TestInvalidWorkflowAllowsHookflowRelatedWork tests that hookflow-related operations are
+// allowed when workflows have validation errors (agent needs to investigate and fix them)
+func TestInvalidWorkflowAllowsHookflowRelatedWork(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-related-work-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -935,12 +944,293 @@ steps:
 	_, _ = buf.ReadFrom(stdoutR)
 	output := buf.String()
 
-	// Should allow because it's a self-repair edit to .github/hookflows/
+	// Should allow because it's a hookflow-related edit (file path contains "hookflow")
 	if !strings.Contains(output, "allow") {
-		t.Errorf("Expected allow for self-repair edit, got: %s", output)
+		t.Errorf("Expected allow for hookflow edit, got: %s", output)
 	}
-	if !strings.Contains(output, "self-repair") {
-		t.Errorf("Expected 'self-repair' in reason, got: %s", output)
+	if !strings.Contains(output, "hookflow-related") {
+		t.Errorf("Expected 'hookflow-related' in reason, got: %s", output)
+	}
+}
+
+// TestInvalidWorkflowAllowsHookflowView tests that viewing hookflow files is allowed
+// when workflows have validation errors (agent needs to inspect the broken files)
+func TestInvalidWorkflowAllowsHookflowView(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-view-allow-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidWorkflow := `name: invalid
+on:
+  file:
+    unknown_field: true
+steps:
+  - run: echo test
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "invalid.yml"), []byte(invalidWorkflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tool event: viewing a hookflow file (not a file edit/create)
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "view",
+			Args: map[string]interface{}{
+				"path": ".github/hookflows/invalid.yml",
+			},
+		},
+		Cwd: tmpDir,
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	if !strings.Contains(output, "allow") {
+		t.Errorf("Expected allow for hookflow view, got: %s", output)
+	}
+}
+
+// TestInvalidWorkflowAllowsHookflowCommand tests that running hookflow-related
+// commands is allowed when workflows have validation errors
+func TestInvalidWorkflowAllowsHookflowCommand(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-cmd-allow-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidWorkflow := `name: invalid
+on:
+  file:
+    unknown_field: true
+steps:
+  - run: echo test
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "invalid.yml"), []byte(invalidWorkflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tool event: running a hookflow-related command
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "powershell",
+			Args: map[string]interface{}{
+				"command": "gh hookflow validate",
+			},
+		},
+		Cwd: tmpDir,
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	if !strings.Contains(output, "allow") {
+		t.Errorf("Expected allow for hookflow command, got: %s", output)
+	}
+}
+
+// TestInvalidWorkflowDeniesHookflowDelete tests that delete operations targeting
+// hookflow files are blocked (force fix, not delete)
+func TestInvalidWorkflowDeniesHookflowDelete(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-delete-deny-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidWorkflow := `name: invalid
+on:
+  file:
+    unknown_field: true
+steps:
+  - run: echo test
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "invalid.yml"), []byte(invalidWorkflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	deleteCommands := []string{
+		"rm .github/hookflows/invalid.yml",
+		"Remove-Item .github/hookflows/invalid.yml",
+		"del .github/hookflows/invalid.yml",
+		"unlink .github/hookflows/invalid.yml",
+		"rmdir .github/hookflows",
+	}
+
+	for _, cmd := range deleteCommands {
+		t.Run(cmd, func(t *testing.T) {
+			evt := &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{
+						"command": cmd,
+					},
+				},
+				Cwd: tmpDir,
+			}
+
+			oldStdout := os.Stdout
+			stdoutR, stdoutW, _ := os.Pipe()
+			os.Stdout = stdoutW
+
+			_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+			_ = stdoutW.Close()
+			os.Stdout = oldStdout
+
+			var buf bytes.Buffer
+			_, _ = buf.ReadFrom(stdoutR)
+			output := buf.String()
+
+			if !strings.Contains(output, "deny") {
+				t.Errorf("Expected deny for delete command %q, got: %s", cmd, output)
+			}
+		})
+	}
+}
+
+// TestInvalidWorkflowDeniesUnrelatedView tests that viewing non-hookflow files
+// is blocked when workflows have validation errors
+func TestInvalidWorkflowDeniesUnrelatedView(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-unrelated-view-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidWorkflow := `name: invalid
+on:
+  file:
+    unknown_field: true
+steps:
+  - run: echo test
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "invalid.yml"), []byte(invalidWorkflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tool event: viewing a non-hookflow file
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "view",
+			Args: map[string]interface{}{
+				"path": "src/main.go",
+			},
+		},
+		Cwd: tmpDir,
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	if !strings.Contains(output, "deny") {
+		t.Errorf("Expected deny for unrelated view, got: %s", output)
+	}
+}
+
+// TestInvalidWorkflowDeniesUnrelatedCommand tests that running non-hookflow
+// commands is blocked when workflows have validation errors
+func TestInvalidWorkflowDeniesUnrelatedCommand(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-unrelated-cmd-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidWorkflow := `name: invalid
+on:
+  file:
+    unknown_field: true
+steps:
+  - run: echo test
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "invalid.yml"), []byte(invalidWorkflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tool event: running an unrelated command
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "powershell",
+			Args: map[string]interface{}{
+				"command": "go build ./...",
+			},
+		},
+		Cwd: tmpDir,
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	if !strings.Contains(output, "deny") {
+		t.Errorf("Expected deny for unrelated command, got: %s", output)
 	}
 }
 
@@ -4353,5 +4643,387 @@ func TestComplianceExemptionWithStringToolArgs(t *testing.T) {
 	}
 	if !strings.Contains(output, "allow") {
 		t.Errorf("Expected allow for hookflow init, got: %s", output)
+	}
+}
+
+// TestEventMentionsHookflow tests the eventMentionsHookflow helper function
+func TestEventMentionsHookflow(t *testing.T) {
+	tests := []struct {
+		name     string
+		evt      *schema.Event
+		expected bool
+	}{
+		{
+			name: "file path contains hookflow",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: ".github/hookflows/test.yml", Action: "edit"},
+			},
+			expected: true,
+		},
+		{
+			name: "tool args contain hookflow",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "gh hookflow validate"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tool name contains hookflow",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "hookflow",
+					Args: map[string]interface{}{},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "commit message contains hookflow",
+			evt: &schema.Event{
+				Commit: &schema.CommitEvent{Message: "fix hookflow validation"},
+			},
+			expected: true,
+		},
+		{
+			name: "case insensitive match",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "view",
+					Args: map[string]interface{}{"path": ".github/HookFlows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "no hookflow reference",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: "src/main.go", Action: "edit"},
+				Tool: &schema.ToolEvent{
+					Name: "edit",
+					Args: map[string]interface{}{"path": "src/main.go"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "nil event fields",
+			evt:      &schema.Event{},
+			expected: false,
+		},
+		{
+			name: "non-string tool args ignored",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"timeout": 30},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "empty string args",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "",
+					Args: map[string]interface{}{"command": ""},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "backslash path with hookflow",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "view",
+					Args: map[string]interface{}{"path": ".github\\hookflows\\test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "hookflow in file content",
+			evt: &schema.Event{
+				File: &schema.FileEvent{
+					Path:   "src/config.go",
+					Action: "edit",
+				},
+				Tool: &schema.ToolEvent{
+					Name: "edit",
+					Args: map[string]interface{}{
+						"path":    "src/config.go",
+						"new_str": "path: .github/hookflows/",
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := eventMentionsHookflow(tc.evt)
+			if result != tc.expected {
+				t.Errorf("eventMentionsHookflow() = %v, want %v", result, tc.expected)
+			}
+		})
+	}
+}
+
+// TestIsDeleteTargetingHookflow tests the isDeleteTargetingHookflow helper function
+func TestIsDeleteTargetingHookflow(t *testing.T) {
+	tests := []struct {
+		name     string
+		evt      *schema.Event
+		expected bool
+	}{
+		{
+			name: "rm command with hookflow path",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "rm .github/hookflows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Remove-Item with hookflow path",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "Remove-Item .github/hookflows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "del command with hookflow path",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "del .github/hookflows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "rmdir with hookflow path",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "rmdir .github/hookflows"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "unlink with hookflow path",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "unlink .github/hookflows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "rm without hookflow path is not delete",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "rm src/temp.go"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "hookflow edit is not delete",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: ".github/hookflows/test.yml", Action: "edit"},
+			},
+			expected: false,
+		},
+		{
+			name: "file delete action is delete",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: ".github/hookflows/test.yml", Action: "delete"},
+			},
+			expected: true,
+		},
+		{
+			name: "file delete action on non-hookflow file is not delete",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: "src/temp.go", Action: "delete"},
+			},
+			expected: false,
+		},
+		{
+			name: "nil tool is not delete",
+			evt:      &schema.Event{},
+			expected: false,
+		},
+		{
+			name: "hookflow validate is not delete",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "gh hookflow validate"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "mixed command with hookflow and unrelated rm is conservatively blocked",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "ls .github/hookflows/test.yml; rm something_else"},
+				},
+			},
+			expected: true, // Conservative: both "hookflow" and "rm " present in same arg
+		},
+		{
+			name: "delete and hookflow in separate args bypasses delete detection",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{
+						"command": "rm something_else",
+						"path":    ".github/hookflows/test.yml",
+					},
+				},
+			},
+			expected: false, // Each arg checked independently: "rm" arg lacks "hookflow", path arg lacks "rm"
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isDeleteTargetingHookflow(tc.evt)
+			if result != tc.expected {
+				t.Errorf("isDeleteTargetingHookflow() = %v, want %v", result, tc.expected)
+			}
+		})
+	}
+}
+
+// TestIsHookflowRelatedWork tests the combined isHookflowRelatedWork function
+func TestIsHookflowRelatedWork(t *testing.T) {
+	tests := []struct {
+		name     string
+		evt      *schema.Event
+		expected bool
+	}{
+		{
+			name: "edit hookflow file - allowed",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: ".github/hookflows/test.yml", Action: "edit"},
+			},
+			expected: true,
+		},
+		{
+			name: "view hookflow file - allowed",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "view",
+					Args: map[string]interface{}{"path": ".github/hookflows/test.yml"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "hookflow command - allowed",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "gh hookflow validate"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "create hookflow file - allowed",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: ".github/hookflows/new.yml", Action: "create"},
+			},
+			expected: true,
+		},
+		{
+			name: "grep hookflow dir - allowed",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "grep",
+					Args: map[string]interface{}{
+						"pattern": "name:",
+						"path":    ".github/hookflows/",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "delete hookflow file - blocked",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "rm .github/hookflows/test.yml"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "unrelated file edit - blocked",
+			evt: &schema.Event{
+				File: &schema.FileEvent{Path: "src/main.go", Action: "edit"},
+			},
+			expected: false,
+		},
+		{
+			name: "unrelated command - blocked",
+			evt: &schema.Event{
+				Tool: &schema.ToolEvent{
+					Name: "powershell",
+					Args: map[string]interface{}{"command": "go build ./..."},
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isHookflowRelatedWork(tc.evt)
+			if result != tc.expected {
+				t.Errorf("isHookflowRelatedWork() = %v, want %v", result, tc.expected)
+			}
+		})
+	}
+}
+
+// TestContainsCI tests the case-insensitive substring helper
+func TestContainsCI(t *testing.T) {
+	tests := []struct {
+		s, substr string
+		expected  bool
+	}{
+		{"Hello World", "hello", true},
+		{"Hello World", "WORLD", true},
+		{"hookflow", "HookFlow", true},
+		{"abc", "def", false},
+		{"", "hookflow", false},
+		{"hookflow", "", true}, // empty substr always matches
+		{"", "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.s+"_"+tc.substr, func(t *testing.T) {
+			result := containsCI(tc.s, tc.substr)
+			if result != tc.expected {
+				t.Errorf("containsCI(%q, %q) = %v, want %v", tc.s, tc.substr, result, tc.expected)
+			}
+		})
 	}
 }

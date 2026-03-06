@@ -725,17 +725,17 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 		}
 	}
 
-	// If any workflows are invalid, check if agent is trying to fix them
+	// If any workflows are invalid, check if agent is doing hookflow-related work
 	if len(validationErrors) > 0 {
-		// Allow edits/creates to .github/hookflows/ so agent can self-repair
-		if isHookflowSelfRepair(evt, dir) {
-			log.Info("allowing self-repair for invalid workflows")
+		// Allow hookflow-related operations (except deletes) so agent can investigate and fix
+		if isHookflowRelatedWork(evt) {
+			log.Info("allowing hookflow-related work despite invalid workflows")
 			result := schema.NewAllowResult()
-			result.PermissionDecisionReason = "Allowing hookflow self-repair (workflows have errors)"
+			result.PermissionDecisionReason = "Allowing hookflow-related work (workflows have errors, fix them)"
 			return outputWorkflowResult(result)
 		}
 
-		// Otherwise deny - workflows must be fixed first
+		// Block delete operations and non-hookflow work until workflows are fixed
 		result := &schema.WorkflowResult{
 			PermissionDecision:       "deny",
 			PermissionDecisionReason: fmt.Sprintf("Invalid workflow(s): %s. Fix workflows in .github/hookflows/ first.", strings.Join(validationErrors, "; ")),
@@ -1067,36 +1067,90 @@ func extractPushRef(command string, currentBranch string) string {
 	return "refs/heads/" + currentBranch
 }
 
-// isHookflowSelfRepair checks if the current event is an edit/create to .github/hookflows/
-// This allows the agent to fix invalid workflows without being blocked
-func isHookflowSelfRepair(evt *schema.Event, dir string) bool {
-	// Must be a file event (edit or create)
-	if evt.File == nil {
+// isHookflowRelatedWork checks if the event involves hookflow-related work
+// and is NOT a delete operation. When workflows have validation errors, this
+// allows the agent to investigate and fix them (view files, run commands,
+// search for examples) while still blocking unrelated work and preventing
+// deletion of broken workflow files.
+func isHookflowRelatedWork(evt *schema.Event) bool {
+	if !eventMentionsHookflow(evt) {
 		return false
 	}
-	
-	// Must be editing/creating a file
-	action := evt.File.Action
-	if action != "edit" && action != "create" {
+	if isDeleteTargetingHookflow(evt) {
 		return false
 	}
-	
-	// Check if the path is in .github/hookflows/
-	filePath := evt.File.Path
-	
-	// Normalize path separators (handle both Windows and Unix paths on any platform)
-	filePath = strings.ReplaceAll(filePath, "\\", "/")
-	
-	// Check for .github/hookflows/ in the path
-	if strings.Contains(filePath, ".github/hookflows/") {
-		// Must be a YAML file
-		ext := strings.ToLower(filepath.Ext(filePath))
-		if ext == ".yml" || ext == ".yaml" {
+	return true
+}
+
+// eventMentionsHookflow checks if "hookflow" appears anywhere in the event
+// data: file path, tool name, tool args values, or commit message.
+func eventMentionsHookflow(evt *schema.Event) bool {
+	// Check file path
+	if evt.File != nil && containsCI(evt.File.Path, "hookflow") {
+		return true
+	}
+
+	// Check tool name and args (always populated by the detector)
+	if evt.Tool != nil {
+		if containsCI(evt.Tool.Name, "hookflow") {
 			return true
 		}
+		for _, v := range evt.Tool.Args {
+			if s, ok := v.(string); ok && containsCI(s, "hookflow") {
+				return true
+			}
+		}
 	}
-	
+
+	// Check commit message
+	if evt.Commit != nil && containsCI(evt.Commit.Message, "hookflow") {
+		return true
+	}
+
 	return false
+}
+
+// isDeleteTargetingHookflow checks if the event is a delete operation
+// targeting hookflow files. This prevents the agent from deleting broken
+// workflow files instead of fixing them.
+func isDeleteTargetingHookflow(evt *schema.Event) bool {
+	// Future-proof: check for a file delete action targeting hookflow
+	if evt.File != nil && strings.EqualFold(evt.File.Action, "delete") && containsCI(evt.File.Path, "hookflow") {
+		return true
+	}
+
+	// Check tool args for delete commands targeting hookflow files
+	if evt.Tool != nil {
+		for _, v := range evt.Tool.Args {
+			s, ok := v.(string)
+			if !ok {
+				continue
+			}
+			lower := strings.ToLower(s)
+			if !strings.Contains(lower, "hookflow") {
+				continue
+			}
+			deletePatterns := []string{
+				"rm ", "rm\t",
+				"remove-item",
+				"del ",
+				"unlink ",
+				"rmdir",
+			}
+			for _, pattern := range deletePatterns {
+				if strings.Contains(lower, pattern) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// containsCI performs a case-insensitive substring check.
+func containsCI(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // isSessionErrorFileRead checks if the raw hook input is a `view` tool call
