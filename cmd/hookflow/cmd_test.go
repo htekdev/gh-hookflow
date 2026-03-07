@@ -5134,6 +5134,7 @@ steps:
     if: transcript_count('go test|npm test') == 0
     run: |
       Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No tests were run this session"}'
+      exit 1
 `
 	if err := os.WriteFile(filepath.Join(workflowDir, "require-tests.yml"), []byte(workflow), 0644); err != nil {
 		t.Fatal(err)
@@ -5208,6 +5209,7 @@ steps:
     if: transcript_count('go test|npm test') == 0
     run: |
       Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No tests run since last edit"}'
+      exit 1
 `
 	if err := os.WriteFile(filepath.Join(workflowDir, "since-edit.yml"), []byte(workflow), 0644); err != nil {
 		t.Fatal(err)
