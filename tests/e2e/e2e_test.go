@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 	// 1. Find the repository root by walking up from this test file
 	root, err := findRepoRoot()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to find repo root: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to find repo root: %v\n", err)
 		os.Exit(1)
 	}
 	repoRoot = root
@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	// 2. Create a temp directory for coverage data
 	coverDir, err := os.MkdirTemp("", "hookflow-e2e-cover-*")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create coverage dir: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create coverage dir: %v\n", err)
 		os.Exit(1)
 	}
 	globalCoverDir = coverDir
@@ -41,18 +41,19 @@ func TestMain(m *testing.M) {
 	}
 	binDir := filepath.Join(repoRoot, "bin")
 	if err := os.MkdirAll(binDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create bin dir: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create bin dir: %v\n", err)
 		os.Exit(1)
 	}
 	binaryPath = filepath.Join(binDir, "hookflow-cover"+ext)
 
-	buildCmd := exec.Command("go", "build", "-cover", "-coverpkg=./...",
+	buildCmd := exec.Command("go", "build", "-tags", "e2etest",
+		"-cover", "-coverpkg=./...",
 		"-o", binaryPath, "./cmd/hookflow")
 	buildCmd.Dir = repoRoot
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to build coverage binary: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to build coverage binary: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -96,13 +97,13 @@ func findRepoRoot() (string, error) {
 func mergeCoverage() {
 	inputDirs := collectCoverDirs(globalCoverDir)
 	if len(inputDirs) == 0 {
-		fmt.Fprintln(os.Stderr, "No coverage data collected")
+		_, _ = fmt.Fprintln(os.Stderr, "No coverage data collected")
 		return
 	}
 
 	mergedDir := filepath.Join(globalCoverDir, "merged")
 	if err := os.MkdirAll(mergedDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create merged dir: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create merged dir: %v\n", err)
 		return
 	}
 
@@ -112,7 +113,7 @@ func mergeCoverage() {
 		"-o="+mergedDir)
 	mergeCmd.Dir = repoRoot
 	if out, err := mergeCmd.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "Coverage merge failed: %v\n%s\n", err, out)
+		_, _ = fmt.Fprintf(os.Stderr, "Coverage merge failed: %v\n%s\n", err, out)
 		return
 	}
 
@@ -123,7 +124,7 @@ func mergeCoverage() {
 		"-o="+coverageOut)
 	textCmd.Dir = repoRoot
 	if out, err := textCmd.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "Coverage textfmt failed: %v\n%s\n", err, out)
+		_, _ = fmt.Fprintf(os.Stderr, "Coverage textfmt failed: %v\n%s\n", err, out)
 		return
 	}
 
@@ -132,16 +133,16 @@ func mergeCoverage() {
 	pctCmd.Dir = repoRoot
 	pctOut, err := pctCmd.CombinedOutput()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Coverage percent failed: %v\n%s\n", err, pctOut)
+		_, _ = fmt.Fprintf(os.Stderr, "Coverage percent failed: %v\n%s\n", err, pctOut)
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "\n════════════════════════════════════════\n")
-	fmt.Fprintf(os.Stdout, "  E2E Binary Coverage Report\n")
-	fmt.Fprintf(os.Stdout, "════════════════════════════════════════\n")
-	fmt.Fprintf(os.Stdout, "%s", pctOut)
-	fmt.Fprintf(os.Stdout, "\nCoverage profile written to: %s\n", coverageOut)
-	fmt.Fprintf(os.Stdout, "════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(os.Stdout, "\n════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(os.Stdout, "  E2E Binary Coverage Report\n")
+	_, _ = fmt.Fprintf(os.Stdout, "════════════════════════════════════════\n")
+	_, _ = fmt.Fprintf(os.Stdout, "%s", pctOut)
+	_, _ = fmt.Fprintf(os.Stdout, "\nCoverage profile written to: %s\n", coverageOut)
+	_, _ = fmt.Fprintf(os.Stdout, "════════════════════════════════════════\n")
 }
 
 // collectCoverDirs finds all subdirectories of root that contain coverage data

@@ -88,12 +88,6 @@ func runHookflow(t *testing.T, workspace, eventJSON, eventType string, opts *hoo
 	return result, output
 }
 
-// runHookflowGlobal is a convenience wrapper for runHookflow with --global flag.
-func runHookflowGlobal(t *testing.T, workspace, eventJSON, eventType string) (*HookflowResult, string) {
-	t.Helper()
-	return runHookflow(t, workspace, eventJSON, eventType, &hookflowOpts{global: true})
-}
-
 // parseResult extracts the HookflowResult JSON from hookflow output.
 // The output may contain log lines before the JSON, so we find the last
 // line that looks like JSON.
@@ -290,4 +284,25 @@ func buildShellEventJSON(toolName, command, cwd string) string {
 	}
 	data, _ := json.Marshal(event)
 	return string(data)
+}
+
+// runHookflowCmd executes the coverage-instrumented hookflow binary with
+// arbitrary subcommand args (not run --raw). Used for testing git-push, create,
+// discover, and other CLI subcommands.
+func runHookflowCmd(t *testing.T, args []string, env []string) (string, error) {
+	t.Helper()
+
+	safeName := strings.ReplaceAll(t.Name(), "/", "_")
+	safeName = strings.ReplaceAll(safeName, "\\", "_")
+	coverSubDir := filepath.Join(globalCoverDir, safeName)
+	if err := os.MkdirAll(coverSubDir, 0755); err != nil {
+		t.Fatalf("Failed to create coverage subdir: %v", err)
+	}
+
+	cmd := exec.Command(binaryPath, args...)
+	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverSubDir)
+	cmd.Env = append(cmd.Env, env...)
+
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
