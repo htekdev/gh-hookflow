@@ -404,7 +404,7 @@ jobs:
           # Multiple files give the async post-hook time to complete before a later
           # pre-hook catches the error and blocks the agent. The agent reads the error
           # file to acknowledge it, learns about the missing field, and fixes api-spec.json.
-          copilot -p "Create these files one at a time in order: 1) api-spec.json with exactly this JSON: {\"endpoint\": \"/users\", \"method\": \"GET\"} 2) notes.txt containing 'task started' 3) summary.md containing '# Summary' — and address any issues if they arise" --yolo 2>&1 || true
+          copilot -p "Create these files one at a time in order using the create file tool (NOT shell commands like cat, echo, or heredocs — you must use the create tool so file hooks fire): 1) api-spec.json with exactly this JSON: {\"endpoint\": \"/users\", \"method\": \"GET\"} 2) notes.txt containing 'task started' 3) summary.md containing '# Summary' — and address any issues if they arise" --yolo 2>&1 || true
           echo ""
           echo "=== Checking results ==="
           if [ -f "api-spec.json" ]; then
