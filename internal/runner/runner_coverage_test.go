@@ -38,7 +38,7 @@ func TestShellTypeBash(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -76,7 +76,7 @@ func TestShellTypeSh(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -106,7 +106,7 @@ func TestShellTypePwsh(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -136,7 +136,7 @@ func TestShellTypePowerShell(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -170,7 +170,7 @@ func TestShellTypeCmd(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -224,7 +224,7 @@ func TestShellTypeCustom(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -262,7 +262,7 @@ func TestStepNameAutoGeneration(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -305,7 +305,7 @@ func TestStepWithNeitherRunNorUses(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -352,7 +352,7 @@ func TestEventContextCwdAndTimestamp(t *testing.T) {
 		Timestamp: "2024-01-01T12:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -387,7 +387,7 @@ func TestEventContextHook(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -423,7 +423,7 @@ func TestEventContextTool(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -462,7 +462,7 @@ func TestEventContextToolWithHook(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -498,7 +498,7 @@ func TestEventContextFile(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -538,7 +538,7 @@ func TestEventContextCommit(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -574,7 +574,7 @@ func TestEventContextPush(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -600,7 +600,7 @@ func TestEventContextNil(t *testing.T) {
 	}
 
 	// Pass nil event
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -629,7 +629,7 @@ func TestStdoutCapture(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -662,7 +662,7 @@ func TestStderrCapture(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -694,7 +694,7 @@ func TestStdoutAndStderrCombined(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -734,7 +734,7 @@ func TestVeryShortTimeout(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	start := time.Now()
 	results, err := runner.Run(context.Background())
 	elapsed := time.Since(start)
@@ -776,7 +776,7 @@ func TestTimeoutMessageIncludesSeconds(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -811,7 +811,7 @@ func TestWorkingDirectoryInvalidPath(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -843,7 +843,7 @@ func TestWorkingDirectoryWithEnvVar(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -882,7 +882,7 @@ func TestMultipleStepsWithDifferentWorkingDirectories(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, currentDir)
+	runner := NewRunner(workflow, nil, currentDir, "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -919,7 +919,7 @@ func TestEnvVarInterpolationInCommand(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -959,7 +959,7 @@ func TestStepEnvVarAdded(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1002,7 +1002,7 @@ func TestEnvVarWithExpression(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1038,7 +1038,7 @@ func TestIfConditionErrorSetsFailure(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1076,7 +1076,7 @@ func TestIfConditionErrorWithContinueOnError(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1113,7 +1113,7 @@ func TestStepExecutionOrder(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1143,7 +1143,7 @@ func TestFailurePropagationStopsSubsequentSteps(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1194,7 +1194,7 @@ func TestStepContextOutcome(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1227,7 +1227,7 @@ func TestBuildDenialWithLogsContainsWorkflowInfo(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -1284,7 +1284,7 @@ func TestBuildDenialWithLogsReasonFormat(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -1350,7 +1350,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1376,7 +1376,7 @@ func TestStepWithMissingLocalAction(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1425,7 +1425,7 @@ runs:
 	}
 
 	// Run from parent dir so relative path works
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1471,7 +1471,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1527,7 +1527,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1568,7 +1568,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1598,7 +1598,7 @@ func TestActionMissingMetadataFile(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1648,7 +1648,7 @@ this is not valid yaml:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1694,7 +1694,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1739,7 +1739,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1784,7 +1784,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1842,7 +1842,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1889,7 +1889,7 @@ runs:
 		},
 	}
 
-	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir))
+	runner := NewRunner(workflow, nil, filepath.Dir(tmpDir), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1924,7 +1924,7 @@ func TestCommandExpressionEvaluationError(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1961,7 +1961,7 @@ func TestStepDurationTracking(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1991,7 +1991,7 @@ func TestFailedStepDurationTracking(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2028,7 +2028,7 @@ func TestWorkflowEnvMerge(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2061,7 +2061,7 @@ func TestEmptyWorkflowEnv(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2087,7 +2087,7 @@ func TestNilWorkflowEnv(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2111,7 +2111,7 @@ func TestEmptyWorkflowSteps(t *testing.T) {
 		Steps: []schema.Step{},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2130,7 +2130,7 @@ func TestNilWorkflowSteps(t *testing.T) {
 		// Steps is nil
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2158,7 +2158,7 @@ func TestRunWithBlockingAllStepsSucceed(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	result := runner.RunWithBlocking(context.Background())
 
 	if result.PermissionDecision != "allow" {
@@ -2177,7 +2177,7 @@ func TestRunWithBlockingMixedResults(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	result := runner.RunWithBlocking(context.Background())
 
 	if result.PermissionDecision != "deny" {

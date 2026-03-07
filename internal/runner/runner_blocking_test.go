@@ -21,7 +21,7 @@ func TestRunWithBlockingAllowOnSuccess(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -43,7 +43,7 @@ func TestRunWithBlockingDenyOnFailure(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -68,7 +68,7 @@ func TestRunWithBlockingFalseAllowsOnFailure(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -90,7 +90,7 @@ func TestRunWithBlockingDefaultTrue(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -117,7 +117,7 @@ func TestRunWithBlockingMultipleStepFailures(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -162,7 +162,7 @@ func TestRunWithBlockingCreatesLogFile(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 

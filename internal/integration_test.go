@@ -68,7 +68,7 @@ func TestIntegrationHookEventTriggersWorkflowSuccess(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -118,7 +118,7 @@ func TestIntegrationFileEventTriggersWorkflowSuccess(t *testing.T) {
 	}
 
 	// Run the workflow with real shell execution
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -192,7 +192,7 @@ func TestIntegrationWorkflowWithBlockingTrueStepFailure(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -240,7 +240,7 @@ func TestIntegrationWorkflowWithBlockingFalseStepFailure(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -294,7 +294,7 @@ func TestIntegrationContinueOnErrorStep(t *testing.T) {
 	}
 
 	// Run the workflow
-	r := runner.NewRunner(workflow, event, ".")
+	r := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := r.Run(ctx)
 
@@ -318,7 +318,7 @@ func TestIntegrationContinueOnErrorStep(t *testing.T) {
 	}
 
 	// The overall result should allow (non-blocking mode)
-	result := runner.NewRunner(workflow, event, ".").RunWithBlocking(ctx)
+	result := runner.NewRunner(workflow, event, ".", "").RunWithBlocking(ctx)
 	if result.PermissionDecision != "allow" {
 		t.Errorf("Expected allow decision with continue-on-error and non-blocking, got %s: %s", result.PermissionDecision, result.PermissionDecisionReason)
 	}
@@ -365,7 +365,7 @@ func TestIntegrationExpressionEvaluationInStepRun(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -422,7 +422,7 @@ func TestIntegrationConditionalStepExecution(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -484,7 +484,7 @@ func TestIntegrationMultipleSteps(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -544,7 +544,7 @@ func TestIntegrationStepSkippedAfterFailure(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -619,7 +619,7 @@ func TestIntegrationWorkflowEnvVariables(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -664,7 +664,7 @@ func TestIntegrationWorkflowWithTimeout(t *testing.T) {
 	}
 
 	// Run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	results, err := runner.Run(ctx)
 
@@ -847,7 +847,7 @@ func TestIntegrationFullWorkflowPipeline(t *testing.T) {
 	}
 
 	// Step 2: Create and run the workflow
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 
@@ -894,7 +894,7 @@ func TestIntegrationEmptyWorkflowSteps(t *testing.T) {
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	runner := runner.NewRunner(workflow, event, ".")
+	runner := runner.NewRunner(workflow, event, ".", "")
 	ctx := context.Background()
 	result := runner.RunWithBlocking(ctx)
 

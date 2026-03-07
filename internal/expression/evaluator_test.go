@@ -1,6 +1,9 @@
 package expression
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -1502,5 +1505,320 @@ func TestInequalityOperator(t *testing.T) {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// --- Transcript function tests ---
+
+func setupTranscriptTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	content := `{"timestamp":1,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/main.go","old_str":"old","new_str":"new"},"seq":1}
+{"timestamp":2,"lifecycle":"post","eventType":"postToolUse","toolName":"edit","toolResult":{"resultType":"success"},"seq":2}
+{"timestamp":3,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"go test ./...","description":"Run tests"},"seq":3}
+{"timestamp":4,"lifecycle":"post","eventType":"postToolUse","toolName":"powershell","toolResult":{"resultType":"success","textResultForLlm":"All tests passed"},"seq":4}
+{"timestamp":5,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"git commit -m \"fix: resolve bug\"","description":"Commit changes"},"seq":5}
+{"timestamp":6,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/utils.ts","old_str":"a","new_str":"b"},"seq":6}
+{"timestamp":7,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"npm test","description":"Run npm tests"},"seq":7}
+`
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test transcript: %v", err)
+	}
+	return dir
+}
+
+func TestTranscript_NoArgs_ReturnsAll(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript()")
+	if err != nil {
+		t.Fatalf("transcript() error: %v", err)
+	}
+
+	str, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("transcript() result is not valid JSON array: %v\nResult: %s", err, str)
+	}
+
+	if len(entries) != 7 {
+		t.Errorf("expected 7 entries, got %d", len(entries))
+	}
+}
+
+func TestTranscript_WithRegex_FiltersEntries(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript('go test|npm test')")
+	if err != nil {
+		t.Fatalf("transcript('go test|npm test') error: %v", err)
+	}
+
+	str := result.(string)
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Errorf("expected 2 test entries, got %d", len(entries))
+	}
+}
+
+func TestTranscript_RegexMatchesGitCommit(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript('git commit')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	str := result.(string)
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Errorf("expected 1 git commit entry, got %d", len(entries))
+	}
+}
+
+func TestTranscript_RegexMatchesFilePath(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript('\\.ts')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	str := result.(string)
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Errorf("expected 1 .ts file entry, got %d", len(entries))
+	}
+}
+
+func TestTranscript_NoSessionDir_ReturnsEmptyArray(t *testing.T) {
+	ctx := NewContext()
+
+	result, err := ctx.Evaluate("transcript()")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != "[]" {
+		t.Errorf("expected '[]', got %v", result)
+	}
+}
+
+func TestTranscript_EmptyTranscript_ReturnsEmptyArray(t *testing.T) {
+	dir := t.TempDir()
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript()")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != "[]" {
+		t.Errorf("expected '[]', got %v", result)
+	}
+}
+
+func TestTranscriptSince_ReturnsEntriesAfterMatch(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_since('git commit')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	str := result.(string)
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	// After "git commit" (seq 5), there are 2 entries: edit utils.ts (6) and npm test (7)
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries after git commit, got %d", len(entries))
+	}
+}
+
+func TestTranscriptSince_NoMatch_ReturnsAll(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_since('nonexistent')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	str := result.(string)
+	var entries []map[string]interface{}
+	if err := json.Unmarshal([]byte(str), &entries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if len(entries) != 7 {
+		t.Errorf("expected all 7 entries when no match, got %d", len(entries))
+	}
+}
+
+func TestTranscriptSince_RequiresOneArg(t *testing.T) {
+	ctx := NewContext()
+	_, err := ctx.Evaluate("transcript_since()")
+	if err == nil {
+		t.Error("expected error for transcript_since() with no args")
+	}
+}
+
+func TestTranscriptCount(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_count('go test|npm test')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != 2 {
+		t.Errorf("expected count=2, got %v", result)
+	}
+}
+
+func TestTranscriptCount_NoMatches(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_count('docker build')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != 0 {
+		t.Errorf("expected count=0, got %v", result)
+	}
+}
+
+func TestTranscriptCount_RequiresOneArg(t *testing.T) {
+	ctx := NewContext()
+	_, err := ctx.Evaluate("transcript_count()")
+	if err == nil {
+		t.Error("expected error for transcript_count() with no args")
+	}
+}
+
+func TestTranscriptLast(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_last('\"toolName\":\"edit\"')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	str, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string, got %T", result)
+	}
+
+	if !strings.Contains(str, "utils.ts") {
+		t.Errorf("expected last edit to be utils.ts, got: %s", str)
+	}
+}
+
+func TestTranscriptLast_NoMatch_ReturnsEmpty(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_last('docker push')")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != "" {
+		t.Errorf("expected empty string, got %v", result)
+	}
+}
+
+func TestTranscriptLast_RequiresOneArg(t *testing.T) {
+	ctx := NewContext()
+	_, err := ctx.Evaluate("transcript_last()")
+	if err == nil {
+		t.Error("expected error for transcript_last() with no args")
+	}
+}
+
+func TestTranscript_InvalidRegex(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	_, err := ctx.Evaluate("transcript('[invalid')")
+	if err == nil {
+		t.Error("expected error for invalid regex in transcript()")
+	}
+}
+
+func TestTranscriptCount_InCondition(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.Evaluate("transcript_count('go test|npm test') > 0")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if result != true {
+		t.Errorf("expected true (tests were run), got %v", result)
+	}
+
+	result, err = ctx.Evaluate("transcript_count('docker build') > 0")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if result != false {
+		t.Errorf("expected false (no docker builds), got %v", result)
+	}
+}
+
+func TestTranscript_UsedInEvaluateString(t *testing.T) {
+	dir := setupTranscriptTestDir(t)
+	ctx := NewContext()
+	ctx.SessionDir = dir
+
+	result, err := ctx.EvaluateString("Test count: ${{ transcript_count('go test|npm test') }}")
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+
+	if result != "Test count: 2" {
+		t.Errorf("expected 'Test count: 2', got '%s'", result)
 	}
 }

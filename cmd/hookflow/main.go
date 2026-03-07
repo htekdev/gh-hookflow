@@ -354,7 +354,7 @@ func runWorkflow(dir, workflowName string) error {
 
 	// Execute the workflow
 	ctx := context.Background()
-	r := runner.NewRunner(wf, nil, dir)
+	r := runner.NewRunner(wf, nil, dir, os.Getenv("HOOKFLOW_SESSION_DIR"))
 	result := r.RunWithBlocking(ctx)
 
 	// Output the result as JSON
@@ -394,9 +394,12 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	// Use it to set the session directory so all downstream code
 	// (WriteError, HasError, ReadAndClearError) uses the same path.
 	var raw struct {
-		ToolName  string `json:"toolName"`
-		SessionID string `json:"sessionId"`
-		Cwd       string `json:"cwd"`
+		ToolName   string          `json:"toolName"`
+		SessionID  string          `json:"sessionId"`
+		Cwd        string          `json:"cwd"`
+		ToolArgs   json.RawMessage `json:"toolArgs"`
+		ToolResult json.RawMessage `json:"toolResult"`
+		Timestamp  int64           `json:"timestamp"`
 	}
 	_ = json.Unmarshal(input, &raw)
 	if raw.SessionID != "" && os.Getenv("HOOKFLOW_SESSION_DIR") == "" {
@@ -505,6 +508,38 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	evt.Lifecycle = lifecycle
 
 	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
+
+	// ── Transcript recording ────────────────────────────────────────
+	// Record this hook invocation in the session transcript for governance
+	// queries. Parse toolArgs from the raw input to preserve all fields.
+	transcriptEntry := session.TranscriptEntry{
+		Timestamp: raw.Timestamp,
+		Lifecycle: lifecycle,
+		EventType: lifecycle + "ToolUse",
+		ToolName:  raw.ToolName,
+	}
+	if len(raw.ToolArgs) > 0 {
+		// Try to parse toolArgs — may be a JSON object or a JSON-encoded string
+		var argsMap map[string]interface{}
+		if err := json.Unmarshal(raw.ToolArgs, &argsMap); err != nil {
+			// toolArgs might be a JSON-encoded string, try to unwrap
+			var argsStr string
+			if err2 := json.Unmarshal(raw.ToolArgs, &argsStr); err2 == nil {
+				_ = json.Unmarshal([]byte(argsStr), &argsMap)
+			}
+		}
+		transcriptEntry.ToolArgs = argsMap
+	}
+	if len(raw.ToolResult) > 0 {
+		var resultMap map[string]interface{}
+		if err := json.Unmarshal(raw.ToolResult, &resultMap); err == nil {
+			transcriptEntry.ToolResult = resultMap
+		}
+	}
+	// Append entry (best-effort — don't fail the hook on transcript errors)
+	if appendErr := session.AppendEntry(transcriptEntry); appendErr != nil {
+		log.Warn("failed to append transcript entry: %v", appendErr)
+	}
 
 	// Discover and run matching workflows
 	err = runMatchingWorkflowsWithEvent(dir, evt, global)
@@ -758,7 +793,7 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 
 	for _, wf := range matchingWorkflows {
 		log.Debug("executing workflow: %s", wf.Name)
-		r := runner.NewRunner(wf, evt, dir)
+		r := runner.NewRunner(wf, evt, dir, os.Getenv("HOOKFLOW_SESSION_DIR"))
 		result := r.RunWithBlocking(ctx)
 
 		// If any workflow denies, the final result is deny
@@ -874,7 +909,7 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	var finalResult *schema.WorkflowResult
 	
 	for _, wf := range matchingWorkflows {
-		r := runner.NewRunner(wf, event, dir)
+		r := runner.NewRunner(wf, event, dir, os.Getenv("HOOKFLOW_SESSION_DIR"))
 		result := r.RunWithBlocking(ctx)
 		
 		// If any workflow denies, the final result is deny
