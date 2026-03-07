@@ -60,7 +60,7 @@ hookflow/
 │   ├── mcp/              # MCP server infrastructure
 │   ├── runner/           # Step execution (records post-lifecycle errors via session.WriteError)
 │   ├── schema/           # Workflow types and validation
-│   ├── session/          # Session error persistence (error.md read/write/clear)
+│   ├── session/          # Session error persistence + transcript recording
 │   └── trigger/          # Event-to-trigger matching
 ├── packages/
 │   └── npm-wrapper/      # npm package for CLI distribution
@@ -169,6 +169,14 @@ event.git.*        → git-specific fields (message, branch, etc.)
 - `${{ }}` syntax with GitHub Actions parity
 - Context: `event`, `env`, `steps`
 - Functions: `contains()`, `startsWith()`, `endsWith()`, etc.
+- Transcript functions: `transcript()`, `transcript_since()`, `transcript_count()`, `transcript_last()`
+
+### Session Transcript (`internal/session/transcript.go`)
+- Self-managed JSONL recording of every hook invocation hookflow receives
+- File: `~/.hookflow/sessions/{sessionId}/transcript.jsonl`
+- Capped at 1000 entries (configurable via `HOOKFLOW_TRANSCRIPT_MAX_ENTRIES`)
+- Regex matching across full serialized payload (handles `git commit` inside `powershell` args)
+- Enables advisory governance: check what the agent *did* rather than only blocking what it *tries*
 
 ### Production Logging (`internal/logging/`)
 - Logs to `~/.hookflow/logs/hookflow-YYYY-MM-DD.log`
