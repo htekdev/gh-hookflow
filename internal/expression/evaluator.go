@@ -513,7 +513,20 @@ func equals(a, b interface{}) bool {
 	if aIsStr && bIsStr {
 		return strings.EqualFold(aStr, bStr)
 	}
+	// Handle numeric comparison across int/float64 boundaries
+	if isNumeric(a) && isNumeric(b) {
+		return toNumber(a) == toNumber(b)
+	}
 	return reflect.DeepEqual(a, b)
+}
+
+func isNumeric(v interface{}) bool {
+	switch v.(type) {
+	case int, int64, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // Built-in functions
@@ -715,7 +728,7 @@ func builtinTranscriptCount(ctx *Context, args ...interface{}) (interface{}, err
 	if err != nil {
 		return nil, err
 	}
-	return count, nil
+	return float64(count), nil
 }
 
 // builtinTranscriptLast returns the last entry matching the regex as a JSON string.

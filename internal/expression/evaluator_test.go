@@ -1704,7 +1704,7 @@ func TestTranscriptCount(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 
-	if result != 2 {
+	if result != float64(2) {
 		t.Errorf("expected count=2, got %v", result)
 	}
 }
@@ -1719,7 +1719,7 @@ func TestTranscriptCount_NoMatches(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 
-	if result != 0 {
+	if result != float64(0) {
 		t.Errorf("expected count=0, got %v", result)
 	}
 }

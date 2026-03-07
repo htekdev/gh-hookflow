@@ -5027,3 +5027,274 @@ func TestContainsCI(t *testing.T) {
 		})
 	}
 }
+
+// --- Transcript integration tests ---
+
+func TestTranscriptCountInWorkflowCondition(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-transcript-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	sessionDir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+	// Transcript with test runs
+	transcriptContent := `{"timestamp":1,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/main.go"},"seq":1}
+{"timestamp":2,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"go test ./...","description":"Run tests"},"seq":2}
+{"timestamp":3,"lifecycle":"post","eventType":"postToolUse","toolName":"powershell","toolResult":{"resultType":"success"},"seq":3}
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "transcript.jsonl"), []byte(transcriptContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	workflow := `name: require-tests-before-commit
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: check-tests-ran
+    if: transcript_count('go test') > 0
+    run: |
+      Write-Output "Tests were run - allowing"
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "require-tests.yml"), []byte(workflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name:     "powershell",
+			HookType: "preToolUse",
+			Args: map[string]interface{}{
+				"command":     "git commit -m 'fix: update auth'",
+				"description": "Commit changes",
+			},
+		},
+		Cwd:       tmpDir,
+		Lifecycle: "pre",
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	// transcript_count('go test') > 0 is true, step runs and allows
+	if strings.Contains(output, "deny") {
+		t.Errorf("Expected allow (tests were run), got: %s", output)
+	}
+}
+
+func TestTranscriptCountZero_DeniesWhenNoTests(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-transcript-deny-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	sessionDir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+	// Transcript with NO test runs
+	transcriptContent := `{"timestamp":1,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/main.go"},"seq":1}
+{"timestamp":2,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/utils.go"},"seq":2}
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "transcript.jsonl"), []byte(transcriptContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	workflow := `name: require-tests
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: deny-no-tests
+    if: transcript_count('go test|npm test') == 0
+    run: |
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No tests were run this session"}'
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "require-tests.yml"), []byte(workflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name:     "powershell",
+			HookType: "preToolUse",
+			Args: map[string]interface{}{
+				"command":     "git commit -m 'fix'",
+				"description": "Commit",
+			},
+		},
+		Cwd:       tmpDir,
+		Lifecycle: "pre",
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	if !strings.Contains(output, "deny") {
+		t.Errorf("Expected deny (no tests run), got: %s", output)
+	}
+	if !strings.Contains(output, "No tests were run") {
+		t.Errorf("Expected 'No tests were run' reason, got: %s", output)
+	}
+}
+
+func TestTranscriptSince_InWorkflow(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-transcript-since-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	sessionDir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+	// Transcript: commit, then edit, then build (no test since edit)
+	transcriptContent := `{"timestamp":1,"lifecycle":"pre","toolName":"powershell","toolArgs":{"command":"git commit -m 'first'"},"seq":1}
+{"timestamp":2,"lifecycle":"pre","toolName":"edit","toolArgs":{"path":"src/main.go"},"seq":2}
+{"timestamp":3,"lifecycle":"pre","toolName":"powershell","toolArgs":{"command":"go build ./..."},"seq":3}
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "transcript.jsonl"), []byte(transcriptContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Use transcript_count to check for tests — no need for complex JSON parsing
+	workflow := `name: check-since-edit
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: check-no-tests
+    if: transcript_count('go test|npm test') == 0
+    run: |
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No tests run since last edit"}'
+`
+	if err := os.WriteFile(filepath.Join(workflowDir, "since-edit.yml"), []byte(workflow), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	evt := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name:     "powershell",
+			HookType: "preToolUse",
+			Args: map[string]interface{}{
+				"command": "git commit -m 'second'",
+			},
+		},
+		Cwd:       tmpDir,
+		Lifecycle: "pre",
+	}
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runMatchingWorkflowsWithEvent(tmpDir, evt, false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+	output := buf.String()
+
+	// No tests were run, so should deny
+	if !strings.Contains(output, "deny") {
+		t.Errorf("Expected deny (no tests run since edit), got: %s", output)
+	}
+	if !strings.Contains(output, "No tests run") {
+		t.Errorf("Expected reason about no tests, got: %s", output)
+	}
+}
+
+func TestTranscriptRecording_AppendsOnRawInput(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hookflow-transcript-record-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	sessionDir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+
+	// Create hooks.json so hookflow considers this initialized
+	hooksDir := filepath.Join(tmpDir, ".github", "hooks")
+	if err := os.MkdirAll(hooksDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	hooksJSON := `{"version":1,"hooks":{"preToolUse":[{"bash":"gh hookflow run --raw --event-type preToolUse"}]}}`
+	if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), []byte(hooksJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No workflows, but transcript should still be recorded
+	escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+	rawInput := `{"toolName":"edit","toolArgs":"{\"path\":\"test.go\",\"old_str\":\"old\",\"new_str\":\"new\"}","cwd":"` + escapedDir + `","timestamp":1704614600000}`
+
+	oldStdout := os.Stdout
+	stdoutR, stdoutW, _ := os.Pipe()
+	os.Stdout = stdoutW
+
+	_ = runWithRawInput(tmpDir, rawInput, "pre", false)
+
+	_ = stdoutW.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(stdoutR)
+
+	// Check transcript was written
+	transcriptPath := filepath.Join(sessionDir, "transcript.jsonl")
+	data, err := os.ReadFile(transcriptPath)
+	if err != nil {
+		t.Fatalf("transcript file not created: %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, `"toolName":"edit"`) {
+		t.Errorf("transcript should contain toolName:edit, got: %s", content)
+	}
+	if !strings.Contains(content, `"lifecycle":"pre"`) {
+		t.Errorf("transcript should contain lifecycle:pre, got: %s", content)
+	}
+}
