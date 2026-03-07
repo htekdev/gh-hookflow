@@ -26,6 +26,7 @@ This document compares hook systems across three AI coding assistants to inform 
 | **Async Hooks** | ❌ | ❌ | ✅ Native `async: true` |
 | **Cross-Platform** | `bash`/`powershell` | `command`/`windows`/`linux`/`osx` | `command` only |
 | **Timeout** | `timeoutSec` (seconds) | `timeout` (seconds) | `timeout` (milliseconds) |
+| **Session Transcript** | ❌ Not in payload | ✅ `transcript_path` (JSONL) | ✅ `transcript_path` (JSONL) |
 
 ---
 

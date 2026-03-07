@@ -1,0 +1,19 @@
+# E2E Test: Transcript-based governance - require tests before commit
+# Uses transcript_count() to check if tests were run in the session
+
+name: Transcript Require Tests
+description: Denies commits when no test execution is found in session transcript
+
+on:
+  tool:
+    name: powershell
+
+blocking: true
+
+steps:
+  - name: Check tests ran
+    if: transcript_count('go test|npm test|pytest|jest') == 0
+    run: |
+      Write-Host "BLOCKED: No test execution found in session transcript"
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No tests were run this session. Run tests before committing."}'
+      exit 1

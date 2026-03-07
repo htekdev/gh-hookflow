@@ -318,6 +318,11 @@ steps:
 | `always()` | Always true |
 | `success()` | Previous steps succeeded |
 | `failure()` | Previous step failed |
+| `transcript()` | Full session transcript as JSON array |
+| `transcript('regex')` | Transcript entries matching regex |
+| `transcript_since('regex')` | Entries after last match of regex |
+| `transcript_count('regex')` | Count of entries matching regex |
+| `transcript_last('regex')` | Last entry matching regex |
 
 ## Common Patterns
 
@@ -369,6 +374,42 @@ steps:
   - name: ESLint
     run: npx eslint "${{ event.file.path }}" --fix
 ```
+
+### Session Transcript — Advisory Governance
+
+Hookflow records every tool call it sees into a session transcript. Use `transcript_*()` functions to query what the agent has already done — enabling advisory governance (checking the agent *should have* done something) rather than only blocking governance.
+
+**Check tests were run before commit:**
+
+```yaml
+name: Suggest Tests Before Commit
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: check-tests
+    if: transcript_count('go test|npm test|pytest|jest') == 0
+    run: |
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"No test execution found this session. Consider running tests before committing."}'
+```
+
+**Check for code review since last edit:**
+
+```yaml
+name: Review Before Commit
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: check-review
+    if: transcript_count('code-review|code_review') == 0
+    run: |
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"Consider running a code review before committing."}'
+```
+
+The transcript functions use regex matching across the entire serialized hook payload, so patterns like `go test` match even when the command is buried inside a `powershell` tool call's arguments. The transcript is capped at 1000 entries (configurable via `HOOKFLOW_TRANSCRIPT_MAX_ENTRIES`).
 
 ## Primitive Guards
 

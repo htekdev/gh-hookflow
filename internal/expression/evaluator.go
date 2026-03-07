@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/htekdev/gh-hookflow/internal/session"
 )
 
 // Context holds the evaluation context for expressions
@@ -15,6 +17,7 @@ type Context struct {
 	Steps            map[string]StepContext
 	Functions        map[string]Function
 	ContextFunctions map[string]ContextFunction
+	SessionDir       string // Path to the session directory for transcript access
 }
 
 // StepContext holds the output of a previous step
@@ -51,6 +54,10 @@ func NewContext() *Context {
 	ctx.ContextFunctions["success"] = builtinSuccess
 	ctx.ContextFunctions["failure"] = builtinFailure
 	ctx.ContextFunctions["cancelled"] = builtinCancelled
+	ctx.ContextFunctions["transcript"] = builtinTranscript
+	ctx.ContextFunctions["transcript_since"] = builtinTranscriptSince
+	ctx.ContextFunctions["transcript_count"] = builtinTranscriptCount
+	ctx.ContextFunctions["transcript_last"] = builtinTranscriptLast
 	return ctx
 }
 
@@ -484,6 +491,8 @@ func toNumber(v interface{}) float64 {
 		return val
 	case int64:
 		return float64(val)
+	case int:
+		return float64(val)
 	case string:
 		f, _ := strconv.ParseFloat(val, 64)
 		return f
@@ -504,7 +513,20 @@ func equals(a, b interface{}) bool {
 	if aIsStr && bIsStr {
 		return strings.EqualFold(aStr, bStr)
 	}
+	// Handle numeric comparison across int/float64 boundaries
+	if isNumeric(a) && isNumeric(b) {
+		return toNumber(a) == toNumber(b)
+	}
 	return reflect.DeepEqual(a, b)
+}
+
+func isNumeric(v interface{}) bool {
+	switch v.(type) {
+	case int, int64, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // Built-in functions
@@ -634,4 +656,106 @@ func builtinCancelled(ctx *Context, args ...interface{}) (interface{}, error) {
 		}
 	}
 	return false, nil
+}
+
+// readSessionTranscriptRaw reads raw JSONL lines from the context's session dir.
+func readSessionTranscriptRaw(ctx *Context) ([]string, error) {
+	if ctx.SessionDir == "" {
+		return nil, nil
+	}
+	return session.ReadTranscriptRawFromDir(ctx.SessionDir)
+}
+
+// builtinTranscript returns the full transcript or regex-filtered entries as a JSON array string.
+// transcript()            — returns all entries
+// transcript('pattern')   — returns entries matching the regex pattern
+func builtinTranscript(ctx *Context, args ...interface{}) (interface{}, error) {
+	lines, err := readSessionTranscriptRaw(ctx)
+	if err != nil {
+		return "[]", nil
+	}
+
+	if len(args) == 0 {
+		return wrapLinesAsJSONArray(lines), nil
+	}
+
+	if len(args) != 1 {
+		return nil, fmt.Errorf("transcript() accepts 0 or 1 arguments")
+	}
+
+	pattern := toString(args[0])
+	matched, err := session.FilterByRegex(lines, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return wrapLinesAsJSONArray(matched), nil
+}
+
+// builtinTranscriptSince returns all entries after the last entry matching the regex.
+// transcript_since('pattern') — entries after last match
+func builtinTranscriptSince(ctx *Context, args ...interface{}) (interface{}, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("transcript_since() requires exactly 1 argument (regex pattern)")
+	}
+
+	lines, err := readSessionTranscriptRaw(ctx)
+	if err != nil {
+		return "[]", nil
+	}
+
+	pattern := toString(args[0])
+	result, err := session.FilterSinceLastMatch(lines, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return wrapLinesAsJSONArray(result), nil
+}
+
+// builtinTranscriptCount returns the count of entries matching the regex.
+// transcript_count('pattern') — count of matches
+func builtinTranscriptCount(ctx *Context, args ...interface{}) (interface{}, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("transcript_count() requires exactly 1 argument (regex pattern)")
+	}
+
+	lines, err := readSessionTranscriptRaw(ctx)
+	if err != nil {
+		return 0, nil
+	}
+
+	pattern := toString(args[0])
+	count, err := session.CountMatches(lines, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return float64(count), nil
+}
+
+// builtinTranscriptLast returns the last entry matching the regex as a JSON string.
+// transcript_last('pattern') — last matching entry
+func builtinTranscriptLast(ctx *Context, args ...interface{}) (interface{}, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("transcript_last() requires exactly 1 argument (regex pattern)")
+	}
+
+	lines, err := readSessionTranscriptRaw(ctx)
+	if err != nil {
+		return "", nil
+	}
+
+	pattern := toString(args[0])
+	result, err := session.LastMatch(lines, pattern)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// wrapLinesAsJSONArray wraps raw JSONL lines into a JSON array string.
+// Each line is already valid JSON, so we compose the array directly.
+func wrapLinesAsJSONArray(lines []string) string {
+	if len(lines) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(lines, ",") + "]"
 }

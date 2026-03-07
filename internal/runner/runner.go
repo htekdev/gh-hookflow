@@ -35,8 +35,9 @@ type StepResult struct {
 }
 
 // NewRunner creates a new step runner
-func NewRunner(workflow *schema.Workflow, event *schema.Event, workingDir string) *Runner {
+func NewRunner(workflow *schema.Workflow, event *schema.Event, workingDir string, sessionDir string) *Runner {
 	exprCtx := expression.NewContext()
+	exprCtx.SessionDir = sessionDir
 
 	// Populate event context
 	if event != nil {

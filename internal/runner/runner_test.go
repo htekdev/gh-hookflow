@@ -23,7 +23,7 @@ func TestStepWithoutTimeout(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -62,7 +62,7 @@ func TestStepWithTimeoutCompleteInTime(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -109,7 +109,7 @@ func TestStepWithTimeoutExceeded(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -170,7 +170,7 @@ func TestMultipleStepsWithMixedTimeouts(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -216,7 +216,7 @@ func TestTimeoutContextPropagation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 
 	// Pass a context with its own timeout - should still respect step timeout
 	parentCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -260,7 +260,7 @@ func TestCommandKilledOnTimeout(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -292,7 +292,7 @@ func TestZeroTimeoutNotApplied(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -323,7 +323,7 @@ func TestNegativeTimeoutNotApplied(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	ctx := context.Background()
 
 	results, err := runner.Run(ctx)
@@ -364,7 +364,7 @@ func TestContinueOnErrorTrueAllowsSubsequentSteps(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -414,7 +414,7 @@ func TestContinueOnErrorFalseStopsSubsequentSteps(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -463,7 +463,7 @@ func TestDefaultContinueOnErrorIsFalse(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -507,7 +507,7 @@ func TestAlwaysRunsRegardlessOfPreviousFailure(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -563,7 +563,7 @@ func TestMixedContinueOnErrorAndAlways(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -618,7 +618,7 @@ func TestContinueOnErrorWithMultipleFailures(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -657,7 +657,7 @@ func TestSuccessfulStepDoesNotSetPrevStepFailed(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -697,7 +697,7 @@ func TestContinueOnErrorWithEnvironmentVariables(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -742,7 +742,7 @@ func TestAlwaysWithContinueOnError(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -802,7 +802,7 @@ func TestPrevStepFailedFlagOnly(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, os.TempDir())
+	runner := NewRunner(workflow, nil, os.TempDir(), "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -856,7 +856,7 @@ func TestStepIfConditionTrue(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -895,7 +895,7 @@ func TestStepIfConditionFalse(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -993,7 +993,7 @@ func TestStepIfExpressionEvaluation(t *testing.T) {
 				Timestamp: "2024-01-01T00:00:00Z",
 			}
 
-			runner := NewRunner(workflow, event, ".")
+			runner := NewRunner(workflow, event, ".", "")
 			results, err := runner.Run(context.Background())
 
 			if err != nil {
@@ -1036,7 +1036,7 @@ func TestStepIfConditionEvaluationError(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1078,7 +1078,7 @@ func TestStepWithoutIfCondition(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1116,7 +1116,7 @@ func TestStepIfWithEnvironmentVariable(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1151,7 +1151,7 @@ func TestStepIfWithEventData(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1195,7 +1195,7 @@ func TestMultipleStepsWithIfConditions(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1243,7 +1243,7 @@ func TestStepIfWithComplexLogic(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1281,7 +1281,7 @@ func TestContinueOnErrorWithIfCondition(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1319,7 +1319,7 @@ func TestEchoCommandExecution(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1348,7 +1348,7 @@ func TestCommandExitCodeSuccess(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1373,7 +1373,7 @@ func TestCommandExitCodeFailure(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1415,7 +1415,7 @@ func TestCommandWithMultipleExitCodes(t *testing.T) {
 				},
 			}
 
-			runner := NewRunner(workflow, nil, ".")
+			runner := NewRunner(workflow, nil, ".", "")
 			results, err := runner.Run(context.Background())
 
 			if err != nil {
@@ -1449,7 +1449,7 @@ func TestWorkingDirectoryDefault(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1481,7 +1481,7 @@ func TestWorkingDirectoryCustom(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1516,7 +1516,7 @@ func TestWorkingDirectoryWithExpressionInterpolation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1548,7 +1548,7 @@ func TestEnvironmentVariableExpansion(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1583,7 +1583,7 @@ func TestStepEnvironmentVariableOverride(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1618,7 +1618,7 @@ func TestEnvironmentVariableInExpressionInterpolation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1652,7 +1652,7 @@ func TestMultipleEnvironmentVariables(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1692,7 +1692,7 @@ func TestSimpleExpressionInterpolation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1721,7 +1721,7 @@ func TestExpressionInterpolationConcatenation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1750,7 +1750,7 @@ func TestInvalidExpressionInterpolation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1781,7 +1781,7 @@ func TestExpressionWithEventData(t *testing.T) {
 		Timestamp: "2024-01-01T00:00:00Z",
 	}
 
-	runner := NewRunner(workflow, event, ".")
+	runner := NewRunner(workflow, event, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1813,7 +1813,7 @@ func TestComplexExpressionInterpolation(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1846,7 +1846,7 @@ func TestStepOutputCapture(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1882,7 +1882,7 @@ func TestStepErrorOutputCapture(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1915,7 +1915,7 @@ func TestEmptyStepOutput(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1947,7 +1947,7 @@ func TestLargeStepOutput(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -1978,7 +1978,7 @@ func TestStepOutputWithSpecialCharacters(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {
@@ -2007,7 +2007,7 @@ func TestDurationCapture(t *testing.T) {
 		},
 	}
 
-	runner := NewRunner(workflow, nil, ".")
+	runner := NewRunner(workflow, nil, ".", "")
 	results, err := runner.Run(context.Background())
 
 	if err != nil {

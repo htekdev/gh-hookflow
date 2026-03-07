@@ -769,6 +769,282 @@ jobs:
           echo "✅ ALL PASS: Compliance init recovery flow works end-to-end"
           rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
 
+      # ── Transcript E2E Tests ──────────────────────────────
+
+      - name: 'Test 20a: Transcript recording - hook invocation appends to transcript'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20a
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          ESCAPED_DIR=$(echo "$PWD/e2e-workspace" | sed 's/\\/\\\\/g')
+
+          # First hook call - edit event
+          echo "{\"toolName\":\"edit\",\"toolArgs\":{\"path\":\"src/main.go\",\"old_str\":\"old\",\"new_str\":\"new\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir e2e-workspace > /dev/null 2>&1 || true
+
+          # Second hook call - powershell event
+          echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"go test ./...\",\"description\":\"Run tests\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir e2e-workspace > /dev/null 2>&1 || true
+
+          # Verify transcript was created
+          TRANSCRIPT="$HOOKFLOW_SESSION_DIR/transcript.jsonl"
+          if [ ! -f "$TRANSCRIPT" ]; then
+            echo "❌ FAIL: transcript.jsonl not created"
+            exit 1
+          fi
+
+          # Verify both entries recorded
+          LINE_COUNT=$(wc -l < "$TRANSCRIPT" | tr -d ' ')
+          if [ "$LINE_COUNT" -lt 2 ]; then
+            echo "❌ FAIL: Expected at least 2 transcript entries, got $LINE_COUNT"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          # Verify content
+          if ! grep -q '"toolName":"edit"' "$TRANSCRIPT"; then
+            echo "❌ FAIL: transcript missing edit entry"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+          if ! grep -q '"toolName":"powershell"' "$TRANSCRIPT"; then
+            echo "❌ FAIL: transcript missing powershell entry"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          # Verify sequence numbers are present and increasing
+          if ! grep -q '"seq":1' "$TRANSCRIPT"; then
+            echo "❌ FAIL: transcript missing seq:1"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+          if ! grep -q '"seq":2' "$TRANSCRIPT"; then
+            echo "❌ FAIL: transcript missing seq:2"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          echo "✅ PASS: Transcript recording appends entries with sequence numbers"
+          rm -rf $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 20b: transcript_count() denies when no tests found'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20b
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          # Create workspace with transcript-require-tests workflow
+          TEST_DIR="$RUNNER_TEMP/e2e-test20b-workspace"
+          rm -rf "$TEST_DIR"
+          mkdir -p "$TEST_DIR/.github/hookflows"
+          cp testdata/e2e/hookflows/transcript-require-tests.yml "$TEST_DIR/.github/hookflows/"
+
+          # Pre-populate transcript with only edits (no test runs)
+          cat > "$HOOKFLOW_SESSION_DIR/transcript.jsonl" << 'EOF'
+{"timestamp":1000,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/main.go"},"seq":1}
+{"timestamp":2000,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/utils.go"},"seq":2}
+{"timestamp":3000,"lifecycle":"pre","eventType":"preToolUse","toolName":"create","toolArgs":{"path":"src/new.go"},"seq":3}
+EOF
+
+          ESCAPED_DIR=$(echo "$TEST_DIR" | sed 's/\\/\\\\/g')
+
+          # Send powershell event (matches transcript-require-tests.yml trigger)
+          RESULT=$(echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"git commit -m 'fix: update'\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir "$TEST_DIR" 2>&1) || true
+
+          echo "$RESULT"
+
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"deny"'; then
+            echo "✅ PASS: transcript_count() == 0 correctly denies when no tests found"
+          else
+            echo "❌ FAIL: Expected deny when no test execution in transcript"
+            exit 1
+          fi
+
+          if echo "$RESULT" | grep -qi "No tests"; then
+            echo "✅ PASS: Deny reason mentions no tests"
+          else
+            echo "❌ FAIL: Expected deny reason about no tests"
+            exit 1
+          fi
+
+          rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 20c: transcript_count() allows when tests found'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20c
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          # Create workspace with transcript-require-tests workflow
+          TEST_DIR="$RUNNER_TEMP/e2e-test20c-workspace"
+          rm -rf "$TEST_DIR"
+          mkdir -p "$TEST_DIR/.github/hookflows"
+          cp testdata/e2e/hookflows/transcript-require-tests.yml "$TEST_DIR/.github/hookflows/"
+
+          # Pre-populate transcript WITH test execution
+          cat > "$HOOKFLOW_SESSION_DIR/transcript.jsonl" << 'EOF'
+{"timestamp":1000,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/main.go"},"seq":1}
+{"timestamp":2000,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"go test ./...","description":"Run tests"},"seq":2}
+{"timestamp":3000,"lifecycle":"post","eventType":"postToolUse","toolName":"powershell","toolResult":{"resultType":"success"},"seq":3}
+EOF
+
+          ESCAPED_DIR=$(echo "$TEST_DIR" | sed 's/\\/\\\\/g')
+
+          # Send powershell event
+          RESULT=$(echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"git commit -m 'fix: update'\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir "$TEST_DIR" 2>&1) || true
+
+          echo "$RESULT"
+
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"allow"'; then
+            echo "✅ PASS: transcript_count() > 0 allows when tests were run"
+          else
+            echo "❌ FAIL: Expected allow when test execution found in transcript"
+            exit 1
+          fi
+
+          rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 20d: transcript_count() with npm test pattern'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20d
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          TEST_DIR="$RUNNER_TEMP/e2e-test20d-workspace"
+          rm -rf "$TEST_DIR"
+          mkdir -p "$TEST_DIR/.github/hookflows"
+          cp testdata/e2e/hookflows/transcript-require-tests.yml "$TEST_DIR/.github/hookflows/"
+
+          # Transcript with npm test (not go test) — should also match via regex alternation
+          cat > "$HOOKFLOW_SESSION_DIR/transcript.jsonl" << 'EOF'
+{"timestamp":1000,"lifecycle":"pre","eventType":"preToolUse","toolName":"edit","toolArgs":{"path":"src/index.ts"},"seq":1}
+{"timestamp":2000,"lifecycle":"pre","eventType":"preToolUse","toolName":"powershell","toolArgs":{"command":"npm test","description":"Run tests"},"seq":2}
+EOF
+
+          ESCAPED_DIR=$(echo "$TEST_DIR" | sed 's/\\/\\\\/g')
+
+          RESULT=$(echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"git commit -m 'fix'\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir "$TEST_DIR" 2>&1) || true
+
+          echo "$RESULT"
+
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"allow"'; then
+            echo "✅ PASS: npm test matches regex alternation pattern"
+          else
+            echo "❌ FAIL: Expected allow when npm test found in transcript"
+            exit 1
+          fi
+
+          rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 20e: transcript_count() with empty transcript allows (no deny step fires)'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20e
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          # Use a workflow that only denies when count > 0 (inverse test)
+          TEST_DIR="$RUNNER_TEMP/e2e-test20e-workspace"
+          rm -rf "$TEST_DIR"
+          mkdir -p "$TEST_DIR/.github/hookflows"
+
+          # Workflow: deny if console.log found in transcript (content enforcement audit)
+          cat > "$TEST_DIR/.github/hookflows/audit-console-log.yml" << 'WEOF'
+name: Audit Console Log
+description: Denies if agent wrote console.log during this session
+on:
+  tool:
+    name: powershell
+blocking: true
+steps:
+  - name: check-console-log
+    if: transcript_count('console\.log') > 0
+    run: |
+      Write-Host "BLOCKED: console.log usage detected in session"
+      Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"console.log found in session transcript"}'
+      exit 1
+WEOF
+
+          # Empty transcript — no console.log, should allow
+          touch "$HOOKFLOW_SESSION_DIR/transcript.jsonl"
+
+          ESCAPED_DIR=$(echo "$TEST_DIR" | sed 's/\\/\\\\/g')
+
+          RESULT=$(echo "{\"toolName\":\"powershell\",\"toolArgs\":{\"command\":\"git commit -m 'clean'\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir "$TEST_DIR" 2>&1) || true
+
+          echo "$RESULT"
+
+          if echo "$RESULT" | grep -qE '"permissionDecision":\s*"allow"'; then
+            echo "✅ PASS: Empty transcript — transcript_count() > 0 is false, step skipped, allows"
+          else
+            echo "❌ FAIL: Expected allow with empty transcript"
+            exit 1
+          fi
+
+          rm -rf "$TEST_DIR" $HOOKFLOW_SESSION_DIR
+
+      - name: 'Test 20f: Transcript cap enforcement truncates old entries'
+        shell: bash
+        env:
+          HOOKFLOW_SESSION_DIR: ${{ runner.temp }}/hookflow-session-test20f
+          HOOKFLOW_TRANSCRIPT_MAX_ENTRIES: "10"
+        run: |
+          mkdir -p $HOOKFLOW_SESSION_DIR
+
+          # Pre-populate transcript with 10 entries (at the cap)
+          TRANSCRIPT="$HOOKFLOW_SESSION_DIR/transcript.jsonl"
+          for i in $(seq 1 10); do
+            echo "{\"timestamp\":${i}000,\"lifecycle\":\"pre\",\"eventType\":\"preToolUse\",\"toolName\":\"edit\",\"toolArgs\":{\"path\":\"file${i}.go\"},\"seq\":${i}}"
+          done > "$TRANSCRIPT"
+
+          # Also write the seq counter file
+          echo "10" > "$HOOKFLOW_SESSION_DIR/transcript.seq"
+
+          ESCAPED_DIR=$(echo "$PWD/e2e-workspace" | sed 's/\\/\\\\/g')
+
+          # Trigger a hook call which appends entry 11 and triggers cap enforcement
+          echo "{\"toolName\":\"edit\",\"toolArgs\":{\"path\":\"src/trigger.go\",\"old_str\":\"a\",\"new_str\":\"b\"},\"cwd\":\"${ESCAPED_DIR}\"}" \
+            | hookflow run --raw --event-type preToolUse --dir e2e-workspace > /dev/null 2>&1 || true
+
+          # After cap enforcement: 10 entries existed, cap is 10, truncate to newest half (5) + the new entry = 6
+          LINE_COUNT=$(wc -l < "$TRANSCRIPT" | tr -d ' ')
+          if [ "$LINE_COUNT" -le 10 ]; then
+            echo "✅ PASS: Transcript capped (${LINE_COUNT} entries, cap=10)"
+          else
+            echo "❌ FAIL: Expected transcript capped at ≤10 entries, got ${LINE_COUNT}"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          # Verify newest entries are preserved (seq 11 should be in the file)
+          if grep -q '"seq":11' "$TRANSCRIPT"; then
+            echo "✅ PASS: New entry (seq 11) preserved after cap truncation"
+          else
+            echo "❌ FAIL: New entry not found in transcript after cap"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          # Verify oldest entries were removed (seq 1 should be gone)
+          if grep -q '"seq":1' "$TRANSCRIPT"; then
+            echo "❌ FAIL: Oldest entry (seq 1) should have been truncated"
+            cat "$TRANSCRIPT"
+            exit 1
+          fi
+
+          echo "✅ PASS: Cap enforcement works - old entries truncated, new entries preserved"
+          rm -rf $HOOKFLOW_SESSION_DIR
+
       # ── Summary ────────────────────────────────────────────
       - name: Test summary
         if: always()
@@ -793,4 +1069,5 @@ jobs:
           echo "  Test 17a-b:  Global compliance deny"
           echo "  Test 18a-c:  Global compliance scenarios"
           echo "  Test 19:     Compliance init recovery (deterministic)"
+          echo "  Test 20a-f:  Session transcript recording & governance"
           echo "════════════════════════════════════════"

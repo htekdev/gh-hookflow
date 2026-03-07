@@ -210,7 +210,7 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verb
 		if verbose {
 			fmt.Fprintf(os.Stderr, "  → Running %s-push workflow: %s\n", lifecycle, wf.Name)
 		}
-		r := runner.NewRunner(wf, evt, dir)
+		r := runner.NewRunner(wf, evt, dir, "")
 		result := r.RunWithBlocking(ctx)
 
 		success := result.PermissionDecision == "allow"
