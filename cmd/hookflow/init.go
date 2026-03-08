@@ -19,8 +19,8 @@ Creates:
 With --repo flag, also creates:
 - .github/hookflows/example.yml - Example workflow
 
-For global hookflow across all repos, install the hookflow plugin:
-  copilot plugin install htekdev/hookflow-gh-copilot-plugin
+For global hookflow across all repos, run:
+  hookflow register
 
 After running init, you can create workflows using 'hookflow create'
 or by manually creating YAML files in .github/hookflows/`,
@@ -72,8 +72,8 @@ func runInit(dir string, force bool, repo bool) error {
 		fmt.Println("  2. Or edit the example workflow in .github/hookflows/example.yml")
 		fmt.Println("  3. Commit the .github/ directory to enable for your team")
 	}
-	fmt.Println("\nFor global hookflow across all repos, install the plugin:")
-	fmt.Println("  copilot plugin install htekdev/hookflow-gh-copilot-plugin")
+	fmt.Println("\nFor global hookflow across all repos, run:")
+	fmt.Println("  hookflow register")
 
 	return nil
 }
