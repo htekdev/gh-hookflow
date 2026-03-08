@@ -1,10 +1,10 @@
 name: Hookflow Protection
 
 description: Prevents weakening or disabling of hookflow governance files
+lifecycle: pre
 
 on:
   file:
-    lifecycle: pre
     types:
       - edit
       - create

@@ -507,7 +507,29 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	// Set lifecycle from CLI flag
 	evt.Lifecycle = lifecycle
 
-	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
+	// Populate Hook event — every raw hook invocation is a hook event
+	hookType := "preToolUse"
+	if lifecycle == "post" {
+		hookType = "postToolUse"
+	}
+	evt.Hook = &schema.HookEvent{
+		Type: hookType,
+		Cwd:  evt.Cwd,
+	}
+	if evt.Tool != nil {
+		evt.Hook.Tool = evt.Tool
+	} else if raw.ToolName != "" {
+		toolArgs := make(map[string]interface{})
+		if len(raw.ToolArgs) > 0 {
+			_ = json.Unmarshal(raw.ToolArgs, &toolArgs)
+		}
+		evt.Hook.Tool = &schema.ToolEvent{
+			Name: raw.ToolName,
+			Args: toolArgs,
+		}
+	}
+
+	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, hook=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, evt.Hook != nil, lifecycle)
 
 	// ── Transcript recording ────────────────────────────────────────
 	// Record this hook invocation in the session transcript for governance

@@ -21,6 +21,12 @@
       "description": "Whether the workflow blocks execution until completion",
       "default": true
     },
+    "lifecycle": {
+      "type": "string",
+      "description": "Hook lifecycle: pre (before action) or post (after action). Default: pre",
+      "enum": ["pre", "post"],
+      "default": "pre"
+    },
     "concurrency": {
       "type": "object",
       "description": "Concurrency settings for workflow execution",
@@ -45,7 +51,7 @@
       "additionalProperties": false,
       "properties": {
         "hooks": {
-          "$ref": "#/definitions/hookTrigger"
+          "anyOf": [{"$ref": "#/definitions/hookTrigger"}, {"type": "null"}]
         },
         "tool": {
           "$ref": "#/definitions/toolTrigger"
@@ -59,13 +65,13 @@
           "minItems": 1
         },
         "file": {
-          "$ref": "#/definitions/fileTrigger"
+          "anyOf": [{"$ref": "#/definitions/fileTrigger"}, {"type": "null"}]
         },
         "commit": {
-          "$ref": "#/definitions/commitTrigger"
+          "anyOf": [{"$ref": "#/definitions/commitTrigger"}, {"type": "null"}]
         },
         "push": {
-          "$ref": "#/definitions/pushTrigger"
+          "anyOf": [{"$ref": "#/definitions/pushTrigger"}, {"type": "null"}]
         }
       },
       "minProperties": 1
@@ -161,12 +167,6 @@
       "description": "Trigger on file changes",
       "additionalProperties": false,
       "properties": {
-        "lifecycle": {
-          "type": "string",
-          "description": "Hook lifecycle: pre (before action) or post (after action). Default: pre",
-          "enum": ["pre", "post"],
-          "default": "pre"
-        },
         "types": {
           "type": "array",
           "description": "File event types to trigger on",
@@ -196,12 +196,6 @@
       "description": "Trigger on commits",
       "additionalProperties": false,
       "properties": {
-        "lifecycle": {
-          "type": "string",
-          "description": "Hook lifecycle: pre (before commit) or post (after commit). Default: pre",
-          "enum": ["pre", "post"],
-          "default": "pre"
-        },
         "paths": {
           "type": "array",
           "description": "File paths or patterns to watch",
@@ -237,12 +231,6 @@
       "description": "Trigger on git push events",
       "additionalProperties": false,
       "properties": {
-        "lifecycle": {
-          "type": "string",
-          "description": "Hook lifecycle: pre (before push) or post (after push). Default: pre",
-          "enum": ["pre", "post"],
-          "default": "pre"
-        },
         "paths": {
           "type": "array",
           "description": "File paths or patterns to watch",
@@ -295,6 +283,10 @@
         "name": {
           "type": "string",
           "description": "Optional name for the step"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the step, used to reference outputs and outcomes in expressions"
         },
         "if": {
           "type": "string",

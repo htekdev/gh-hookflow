@@ -20,9 +20,10 @@ type HookflowResult struct {
 
 // hookflowOpts configures how runHookflow executes the binary.
 type hookflowOpts struct {
-	global     bool   // pass --global flag
-	sessionDir string // override HOOKFLOW_SESSION_DIR
-	dir        string // override --dir flag (defaults to workspace)
+	global     bool     // pass --global flag
+	sessionDir string   // override HOOKFLOW_SESSION_DIR
+	dir        string   // override --dir flag (defaults to workspace)
+	env        []string // additional environment variables
 }
 
 // runHookflow executes the coverage-instrumented hookflow binary with the given
@@ -68,10 +69,14 @@ func runHookflow(t *testing.T, workspace, eventJSON, eventType string, opts *hoo
 
 	cmd := exec.Command(binaryPath, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
+	cmdEnv := append(os.Environ(),
 		"GOCOVERDIR="+coverSubDir,
 		"HOOKFLOW_SESSION_DIR="+sessionDir,
 	)
+	if opts != nil && len(opts.env) > 0 {
+		cmdEnv = append(cmdEnv, opts.env...)
+	}
+	cmd.Env = cmdEnv
 
 	out, err := cmd.CombinedOutput()
 	output := string(out)
@@ -89,32 +94,31 @@ func runHookflow(t *testing.T, workspace, eventJSON, eventType string, opts *hoo
 }
 
 // parseResult extracts the HookflowResult JSON from hookflow output.
-// The output may contain log lines before the JSON, so we find the last
-// line that looks like JSON.
+// The output may contain log lines before/after the JSON object, and the
+// JSON may be pretty-printed across multiple lines.
 func parseResult(t *testing.T, output string) *HookflowResult {
 	t.Helper()
 
-	// Try to find JSON in the output by looking for permissionDecision
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		if strings.Contains(line, "permissionDecision") {
-			var result HookflowResult
-			if err := json.Unmarshal([]byte(line), &result); err == nil {
-				return &result
-			}
-			// Try multiline JSON: concatenate from this line onward
-			block := strings.Join(lines[i:], "\n")
-			if err := json.Unmarshal([]byte(block), &result); err == nil {
-				return &result
-			}
-		}
+	// Try parsing the entire output as JSON first (common case)
+	var result HookflowResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &result); err == nil && result.PermissionDecision != "" {
+		return &result
 	}
 
-	// Try parsing the entire output as JSON (pretty-printed)
-	var result HookflowResult
-	if err := json.Unmarshal([]byte(output), &result); err == nil {
-		return &result
+	// Find permissionDecision in the output, then scan backward for the
+	// opening { of the JSON object and use json.Decoder to parse it.
+	idx := strings.LastIndex(output, `"permissionDecision"`)
+	if idx >= 0 {
+		// Scan backward from idx to find the opening {
+		for i := idx - 1; i >= 0; i-- {
+			if output[i] == '{' {
+				decoder := json.NewDecoder(strings.NewReader(output[i:]))
+				if err := decoder.Decode(&result); err == nil && result.PermissionDecision != "" {
+					return &result
+				}
+				break
+			}
+		}
 	}
 
 	t.Fatalf("Failed to parse hookflow result from output:\n%s", output)
@@ -249,6 +253,16 @@ func gitInit(t *testing.T, dir string) {
 	commitCmd.Dir = dir
 	if out, err := commitCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit failed: %v\n%s", err, out)
+	}
+}
+
+// gitAdd stages a file in the git repo
+func gitAdd(t *testing.T, dir, file string) {
+	t.Helper()
+	cmd := exec.Command("git", "add", file)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add %s failed: %v\n%s", file, err, out)
 	}
 }
 

@@ -3,10 +3,10 @@
 
 name: Require Commit Message Format
 description: Enforces conventional commit message format (type colon prefix)
+lifecycle: pre
 
 on:
   commit:
-    lifecycle: pre
 
 blocking: true
 

@@ -38,11 +38,11 @@ func TestPushBackgroundSuccessful(t *testing.T) {
 func TestPushBackgroundPrePushDenies(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"block-push.yml": `name: Block Push
+lifecycle: pre
 on:
   push:
     branches:
       - main
-    lifecycle: pre
 blocking: true
 steps:
   - name: Deny push
@@ -100,9 +100,9 @@ func TestPushBackgroundGitFailure(t *testing.T) {
 func TestPushBackgroundWithPostPush(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-push-notify.yml": `name: Post Push Notify
+lifecycle: post
 on:
   push:
-    lifecycle: post
 blocking: false
 steps:
   - name: Notify
@@ -135,9 +135,9 @@ steps:
 func TestPushBackgroundPostPushFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-push-check.yml": `name: Post Push Check
+lifecycle: post
 on:
   push:
-    lifecycle: post
 blocking: true
 steps:
   - name: Check CI

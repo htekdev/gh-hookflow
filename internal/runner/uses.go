@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/htekdev/gh-hookflow/internal/schema"
 	"gopkg.in/yaml.v3"
@@ -284,6 +285,7 @@ func (r *Runner) executeShellCommandWithShell(ctx context.Context, actionDir, co
 
 	cmd.Dir = actionDir
 	cmd.Env = env
+	cmd.WaitDelay = 3 * time.Second
 
 	// Capture output
 	output, err := cmd.CombinedOutput()

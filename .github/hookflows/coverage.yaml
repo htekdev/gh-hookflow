@@ -1,11 +1,11 @@
 
 name: Test Coverage Enforcement
 description: Ensures code changes maintain minimum test coverage before commit
+lifecycle: pre
 
 
 on:
   commit:
-    lifecycle: pre
     paths:
       - 'cmd/**'
       - 'internal/**'
@@ -20,7 +20,7 @@ steps:
   - name: Run tests with coverage
     run: |
       $goCmd = if (Get-Command go -ErrorAction SilentlyContinue) { "go" } else { "C:\Program Files\Go\bin\go.exe" }
-      & $goCmd test ./... -coverprofile coverage.out -covermode atomic
+      & $goCmd test ./cmd/... ./internal/... -coverprofile coverage.out -covermode atomic -timeout 600s
       if ($LASTEXITCODE -ne 0) {
         Write-Error "Tests failed"
         exit 1

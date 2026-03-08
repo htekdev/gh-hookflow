@@ -1,12 +1,12 @@
 name: Post API Spec Validation
 description: Validates api-spec.json has all required fields after creation
+lifecycle: post
 
 on:
   file:
     types:
       - create
       - edit
-    lifecycle: post
     paths:
       - '**/api-spec.json'
 

@@ -7,55 +7,19 @@ import (
 )
 
 // ============================================================================
-// GetLifecycle Tests - FileTrigger
+// GetLifecycle Tests - Workflow
 // ============================================================================
 
-func TestFileTrigger_GetLifecycle_Default(t *testing.T) {
-	f := &FileTrigger{}
-	if got := f.GetLifecycle(); got != "pre" {
+func TestWorkflow_GetLifecycle_Default(t *testing.T) {
+	w := &Workflow{}
+	if got := w.GetLifecycle(); got != "pre" {
 		t.Errorf("Expected 'pre', got '%s'", got)
 	}
 }
 
-func TestFileTrigger_GetLifecycle_Explicit(t *testing.T) {
-	f := &FileTrigger{Lifecycle: "post"}
-	if got := f.GetLifecycle(); got != "post" {
-		t.Errorf("Expected 'post', got '%s'", got)
-	}
-}
-
-// ============================================================================
-// GetLifecycle Tests - CommitTrigger
-// ============================================================================
-
-func TestCommitTrigger_GetLifecycle_Default(t *testing.T) {
-	c := &CommitTrigger{}
-	if got := c.GetLifecycle(); got != "pre" {
-		t.Errorf("Expected 'pre', got '%s'", got)
-	}
-}
-
-func TestCommitTrigger_GetLifecycle_Explicit(t *testing.T) {
-	c := &CommitTrigger{Lifecycle: "post"}
-	if got := c.GetLifecycle(); got != "post" {
-		t.Errorf("Expected 'post', got '%s'", got)
-	}
-}
-
-// ============================================================================
-// GetLifecycle Tests - PushTrigger
-// ============================================================================
-
-func TestPushTrigger_GetLifecycle_Default(t *testing.T) {
-	p := &PushTrigger{}
-	if got := p.GetLifecycle(); got != "pre" {
-		t.Errorf("Expected 'pre', got '%s'", got)
-	}
-}
-
-func TestPushTrigger_GetLifecycle_Explicit(t *testing.T) {
-	p := &PushTrigger{Lifecycle: "post"}
-	if got := p.GetLifecycle(); got != "post" {
+func TestWorkflow_GetLifecycle_Explicit(t *testing.T) {
+	w := &Workflow{Lifecycle: "post"}
+	if got := w.GetLifecycle(); got != "post" {
 		t.Errorf("Expected 'post', got '%s'", got)
 	}
 }

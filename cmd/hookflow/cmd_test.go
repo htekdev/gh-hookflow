@@ -1716,9 +1716,9 @@ func TestLifecyclePreMatchesPre(t *testing.T) {
 
 	// Workflow with explicit lifecycle: pre
 	workflow := `name: Pre-file validation
+lifecycle: pre
 on:
   file:
-    lifecycle: pre
     paths:
       - '**/*.js'
     types:
@@ -1776,9 +1776,9 @@ func TestLifecyclePostMatchesPost(t *testing.T) {
 
 	// Workflow with lifecycle: post
 	workflow := `name: Post-file linting
+lifecycle: post
 on:
   file:
-    lifecycle: post
     paths:
       - '**/*.js'
     types:
@@ -1835,9 +1835,9 @@ func TestLifecyclePreDoesNotMatchPost(t *testing.T) {
 
 	// Workflow with lifecycle: pre (explicit)
 	workflow := `name: Pre-file validation
+lifecycle: pre
 on:
   file:
-    lifecycle: pre
     paths:
       - '**/*.js'
     types:
@@ -1894,9 +1894,9 @@ func TestLifecyclePostDoesNotMatchPre(t *testing.T) {
 
 	// Workflow with lifecycle: post
 	workflow := `name: Post-file linting
+lifecycle: post
 on:
   file:
-    lifecycle: post
     paths:
       - '**/*.js'
     types:
@@ -2068,9 +2068,9 @@ func TestLifecycleCommitTrigger(t *testing.T) {
 
 	// Pre-commit workflow
 	preWorkflow := `name: Pre-commit check
+lifecycle: pre
 on:
   commit:
-    lifecycle: pre
     paths:
       - 'src/**'
 blocking: true
@@ -2084,9 +2084,9 @@ steps:
 
 	// Post-commit workflow
 	postWorkflow := `name: Post-commit notification
+lifecycle: post
 on:
   commit:
-    lifecycle: post
     paths:
       - 'src/**'
 blocking: false
@@ -2173,9 +2173,9 @@ func TestLifecyclePushTrigger(t *testing.T) {
 
 	// Pre-push workflow
 	workflow := `name: Pre-push check
+lifecycle: pre
 on:
   push:
-    lifecycle: pre
     branches:
       - main
 blocking: true
@@ -2257,9 +2257,9 @@ func TestLifecycleMixedWorkflows(t *testing.T) {
 
 	// Pre-edit workflow (blocks)
 	preWorkflow := `name: Pre-edit validation
+lifecycle: pre
 on:
   file:
-    lifecycle: pre
     paths:
       - '**/*.ts'
     types:
@@ -2275,9 +2275,9 @@ steps:
 
 	// Post-edit workflow (runs after)
 	postWorkflow := `name: Post-edit linting
+lifecycle: post
 on:
   file:
-    lifecycle: post
     paths:
       - '**/*.ts'
     types:

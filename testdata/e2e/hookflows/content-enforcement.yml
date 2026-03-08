@@ -4,10 +4,10 @@
 
 name: Content enforcement - no console.log
 description: Blocks JS/TS files containing console.log statements
+lifecycle: pre
 
 on:
   file:
-    lifecycle: pre
     paths:
       - '**/*.js'
       - '**/*.ts'

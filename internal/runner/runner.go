@@ -423,6 +423,10 @@ func (r *Runner) runCommand(ctx context.Context, step schema.Step, name string, 
 		cmd = exec.CommandContext(ctx, shell, "-c", command)
 	}
 
+	// Prevent cmd.Wait() from hanging when context cancels a process whose
+	// children keep pipes open (common on Windows with pwsh + Start-Sleep).
+	cmd.WaitDelay = 3 * time.Second
+
 	// Set working directory
 	workDir := r.workingDir
 	if step.WorkingDirectory != "" {

@@ -57,10 +57,14 @@ type GitProvider interface {
 	GetAheadBehind(cwd string) (ahead, behind int)
 }
 
+// defaultGitProvider is the fallback when NewDetector receives nil.
+// Overridden via init() in gitprovider_e2etest.go for E2E builds.
+var defaultGitProvider GitProvider = &RealGitProvider{}
+
 // NewDetector creates a new event detector
 func NewDetector(gitProvider GitProvider) *Detector {
 	if gitProvider == nil {
-		gitProvider = &RealGitProvider{}
+		gitProvider = defaultGitProvider
 	}
 	return &Detector{gitProvider: gitProvider}
 }
