@@ -27,9 +27,12 @@ curl -sSL https://raw.githubusercontent.com/htekdev/gh-hookflow/main/scripts/ins
 ## Quick Start
 
 ```bash
-# Initialize gh-hookflow in your repo
+# One-time global setup — enables hookflow for all repos
+hookflow register
+
+# Add workflows to a specific repo
 cd your-project
-hookflow init
+hookflow init --repo
 
 # Create a workflow using AI
 hookflow create "block edits to .env files"
@@ -54,12 +57,16 @@ gh-hookflow lets you run "shift-left" DevOps checks during AI agent editing sess
 
 | Command | Description |
 |---------|-------------|
-| `init` | Initialize gh-hookflow for a repository |
+| `register` | Register personal hooks + skill (global, all repos) |
+| `register --unregister` | Remove personal hooks and skill |
+| `init` | Initialize per-repo hooks |
+| `init --repo` | Also scaffold example workflows |
 | `create <prompt>` | Create a workflow using AI |
 | `discover` | List workflows in the current repository |
 | `validate` | Validate workflow YAML files |
 | `test` | Test a workflow with a mock event |
 | `run` | Run workflows (used by hooks) |
+| `git-push` | Push with governance workflows |
 | `logs` | View debug logs |
 | `version` | Show version information |
 

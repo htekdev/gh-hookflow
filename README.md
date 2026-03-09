@@ -32,35 +32,25 @@ This turns post-lifecycle hooks into **blocking validators** — something the C
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
 - [PowerShell Core](https://github.com/PowerShell/PowerShell) (`pwsh`) installed (workflow steps run in pwsh for cross-platform consistency)
 
-## Installation
+## Get Started in 2 Commands
 
 ```bash
 gh extension install htekdev/gh-hookflow
+gh hookflow register
 ```
 
-This installs gh-hookflow as `gh hookflow` and integrates directly with Copilot CLI hooks.
+That's it. Hookflow is now active for **every repo** you open with Copilot CLI. No per-repo setup needed — governance runs automatically.
 
-## Quick Start
+> `register` installs personal hooks at `~/.copilot/hooks/hooks.json` and the hookflow agent skill at `~/.copilot/skills/hookflow/SKILL.md`. These work across all repositories, with no project-level configuration required.
 
-### 1. Initialize gh-hookflow in your repository
+### Add repo-specific workflows
+
+Once registered globally, create workflows in any repo:
 
 ```bash
 cd your-project
-gh hookflow init
-```
-
-This creates:
-- `.github/hookflows/` — Directory for your workflow files
-- `.github/hooks/hooks.json` — Copilot CLI hook configuration
-- `.github/hookflows/example.yml` — Example workflow to get started
-- `.github/skills/hookflow/SKILL.md` — AI agent guidance for workflow creation
-
-### 2. Create a workflow
-
-Use AI to generate a workflow:
-
-```bash
-gh hookflow create "block edits to .env files"
+gh hookflow init --repo   # scaffolds .github/hookflows/ with an example workflow
+gh hookflow create "block edits to .env files"   # AI-generate a workflow
 ```
 
 Or manually create `.github/hookflows/block-env.yml`:
@@ -87,31 +77,33 @@ steps:
       exit 1
 ```
 
-### 3. Test your workflow
+### Test and share
 
 ```bash
-# Test with a mock file event
-gh hookflow test --event file --action edit --path ".env"
-
-# Test with a mock commit event  
-gh hookflow test --event commit --path src/app.ts
+gh hookflow test --event file --action edit --path ".env"   # test locally
+git add .github/ && git commit -m "Add hookflow workflows"  # share with team
 ```
 
-### 4. Commit and share
+Team members just need `gh extension install htekdev/gh-hookflow && gh hookflow register` to run your workflows during their Copilot sessions.
 
-```bash
-git add .github/
-git commit -m "Add gh-hookflow workflows"
-git push
-```
+### How `register` vs `init` work together
 
-Team members can install with `gh extension install htekdev/gh-hookflow` to automatically run your workflows during their Copilot sessions.
+| Command | Scope | What it does |
+|---------|-------|-------------|
+| `gh hookflow register` | **Global** (all repos) | Installs personal hooks + agent skill in `~/.copilot/`. Run once. |
+| `gh hookflow init` | **Per-repo** | Creates `.github/hooks/hooks.json` for repo-level hooks. |
+| `gh hookflow init --repo` | **Per-repo** | Also scaffolds `.github/hookflows/` with example workflow. |
+
+When both exist, repo hooks run first and personal hooks automatically defer (via the `--global` flag). This means repo-specific workflows always take priority.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `gh hookflow init` | Initialize gh-hookflow for a repository |
+| `gh hookflow register` | Register personal hooks and skill (global, all repos) |
+| `gh hookflow register --unregister` | Remove personal hooks and skill |
+| `gh hookflow init` | Initialize per-repo hooks |
+| `gh hookflow init --repo` | Also scaffold example workflows |
 | `gh hookflow create <prompt>` | Create a workflow using AI |
 | `gh hookflow discover` | List workflows in the current directory |
 | `gh hookflow validate` | Validate workflow YAML files |
@@ -177,8 +169,14 @@ The agent learns what went wrong and can fix it — turning a passive post-hook 
 ## Usage
 
 ```bash
-# Initialize a repository (creates .github/hookflows/ and .github/hooks/hooks.json)
+# One-time global setup (personal hooks + skill for all repos)
+gh hookflow register
+
+# Initialize a repository (creates .github/hooks/hooks.json)
 gh hookflow init
+
+# Initialize with example workflows
+gh hookflow init --repo
 
 # Discover workflows in the current directory
 gh hookflow discover

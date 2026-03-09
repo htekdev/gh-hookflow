@@ -1,7 +1,5 @@
-
 name: Test Coverage Enforcement
 description: Ensures code changes maintain minimum test coverage before commit
-
 
 on:
   commit:
@@ -12,7 +10,6 @@ on:
       - 'packages/**'
     paths-ignore:
       - '**/*.md'
-
 
 blocking: true
 
