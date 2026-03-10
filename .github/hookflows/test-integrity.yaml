@@ -1,0 +1,136 @@
+name: E2E Test Integrity
+description: Post-lifecycle analysis of E2E test files for assertion quality and integrity anti-patterns
+
+on:
+  file:
+    lifecycle: post
+    types:
+      - create
+      - edit
+    paths:
+      - "tests/e2e/**"
+    paths-ignore:
+      - "tests/e2e/e2e_test.go"
+      - "tests/e2e/helpers_test.go"
+
+blocking: true
+
+steps:
+  - name: Block t.Skip without platform justification
+    if: "${{ contains(event.file.content, 't.Skip(') }}"
+    run: |
+      $content = @'
+      ${{ event.file.content }}
+      '@
+      $filePath = '${{ event.file.path }}'
+
+      # Context-aware check: look at surrounding lines (not just the skip line)
+      # because the platform guard is typically on the line BEFORE t.Skip
+      $lines = $content -split "`n"
+      $unjustified = @()
+
+      for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match 't\.Skip\(') {
+          $isJustified = $false
+          # Check the skip line itself and the 5 lines before it for justification
+          $contextStart = [Math]::Max(0, $i - 5)
+          $context = ($lines[$contextStart..$i]) -join "`n"
+          if ($context -match 'runtime\.GOOS') { $isJustified = $true }
+          if ($context -match 'exec\.LookPath') { $isJustified = $true }
+          if ($context -match 'os\.Getenv') { $isJustified = $true }
+          if ($context -match 'testing\.Short') { $isJustified = $true }
+          if (-not $isJustified) {
+            $unjustified += $lines[$i].Trim()
+          }
+        }
+      }
+
+      if ($unjustified.Count -gt 0) {
+        Write-Error "TEST INTEGRITY: Unjustified t.Skip() found in '$filePath'."
+        Write-Host ""
+        Write-Host "t.Skip() is only allowed with platform/environment checks (runtime.GOOS, exec.LookPath, os.Getenv)."
+        Write-Host "If a test is failing, investigate the root cause instead of skipping it."
+        Write-Host ""
+        Write-Host "Unjustified skips:"
+        foreach ($s in $unjustified) { Write-Host "  - $s" }
+        exit 1
+      }
+
+      Write-Host "t.Skip() calls in '$filePath' are justified (platform/environment checks)."
+
+  - name: Block TODO and FIXME in test files
+    if: "${{ contains(event.file.content, '// TODO') || contains(event.file.content, '// FIXME') || contains(event.file.content, '// HACK') || contains(event.file.content, 'test.todo') || contains(event.file.content, 'it.skip') }}"
+    run: |
+      Write-Error "TEST INTEGRITY: Placeholder comments found in '${{ event.file.path }}'."
+      Write-Host ""
+      Write-Host "E2E test files must not contain TODO, FIXME, or HACK comments."
+      Write-Host "Every test must be fully implemented with real assertions."
+      Write-Host "If something needs follow-up, create an issue instead of leaving a placeholder."
+      exit 1
+
+  - name: Block empty test functions
+    run: |
+      $content = @'
+      ${{ event.file.content }}
+      '@
+      $filePath = '${{ event.file.path }}'
+
+      $hasTestFuncs = $content -match 'func Test\w+\(t \*testing\.T\)'
+      if (-not $hasTestFuncs) {
+        Write-Host "No test functions found in '$filePath' - skipping empty body check."
+        exit 0
+      }
+
+      $badPatterns = @(
+        'func Test\w+\([^)]+\)\s*\{\s*\}',
+        'func Test\w+\([^)]+\)\s*\{\s*t\.Log\('
+      )
+
+      foreach ($pattern in $badPatterns) {
+        if ($content -match $pattern) {
+          Write-Error "TEST INTEGRITY: Empty or assertion-less test function detected in '$filePath'."
+          Write-Host ""
+          Write-Host "Every test function must contain at least one assertion (t.Error, t.Fatal, t.Errorf, t.Fatalf)."
+          Write-Host "A test that only logs output is not a test - it must verify behavior."
+          exit 1
+        }
+      }
+
+      Write-Host "Test functions in '$filePath' pass empty body check."
+
+  - name: Detect weakened assertion patterns
+    run: |
+      $content = @'
+      ${{ event.file.content }}
+      '@
+      $filePath = '${{ event.file.path }}'
+
+      $warnings = @()
+
+      if ($content -match 'if\s+true\s*\{') {
+        $warnings += "Found 'if true' - condition that always passes"
+      }
+      if ($content -match 'if\s+false\s*\{[^}]*t\.(Error|Fatal)') {
+        $warnings += "Found 'if false { t.Error/Fatal' - assertion that never executes"
+      }
+      if ($content -match '//\s*t\.(Error|Fatal|Errorf|Fatalf)\(') {
+        $warnings += "Found commented-out assertion (// t.Error/Fatal) - assertions should not be commented out"
+      }
+      if ($content -match 't\.Errorf?\(""\)') {
+        $warnings += "Found t.Error with empty message - assertions need descriptive messages"
+      }
+
+      if ($warnings.Count -gt 0) {
+        Write-Error "TEST INTEGRITY: Weakened assertion patterns detected in '$filePath'."
+        Write-Host ""
+        foreach ($w in $warnings) { Write-Host "  - $w" }
+        Write-Host ""
+        Write-Host "If a test assertion needs to change, investigate whether the CODE is wrong first."
+        Write-Host "Never weaken assertions to make a failing test pass."
+        exit 1
+      }
+
+      Write-Host "No weakened assertion patterns detected in '$filePath'."
+
+  - name: Test file passes integrity check
+    run: Write-Host "E2E test file '${{ event.file.path }}' passes all integrity checks."

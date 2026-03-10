@@ -507,7 +507,29 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	// Set lifecycle from CLI flag
 	evt.Lifecycle = lifecycle
 
-	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, lifecycle)
+	// Populate Hook event — every raw hook invocation is a hook event
+	hookType := "preToolUse"
+	if lifecycle == "post" {
+		hookType = "postToolUse"
+	}
+	evt.Hook = &schema.HookEvent{
+		Type: hookType,
+		Cwd:  evt.Cwd,
+	}
+	if evt.Tool != nil {
+		evt.Hook.Tool = evt.Tool
+	} else if raw.ToolName != "" {
+		toolArgs := make(map[string]interface{})
+		if len(raw.ToolArgs) > 0 {
+			_ = json.Unmarshal(raw.ToolArgs, &toolArgs)
+		}
+		evt.Hook.Tool = &schema.ToolEvent{
+			Name: raw.ToolName,
+			Args: toolArgs,
+		}
+	}
+
+	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, hook=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, evt.Hook != nil, lifecycle)
 
 	// ── Transcript recording ────────────────────────────────────────
 	// Record this hook invocation in the session transcript for governance
@@ -673,36 +695,25 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 		}
 	}
 
-	// Discover workflows
-	workflowDir := filepath.Join(dir, ".github", "hookflows")
-	if _, err := os.Stat(workflowDir); os.IsNotExist(err) {
-		// No workflows directory, allow by default
-		log.Debug("no workflow directory at %s, allowing", workflowDir)
+	// Discover workflows using the discover package
+	discoveredWorkflows, err := discover.Discover(dir)
+	if err != nil {
+		log.Error("workflow discovery failed: %v", err)
+		return fmt.Errorf("failed to discover workflows: %w", err)
+	}
+
+	if len(discoveredWorkflows) == 0 {
+		log.Debug("no workflows found in %s, allowing", dir)
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
 	}
 
-	// Find all workflow files
 	var workflowFiles []string
-	err := filepath.Walk(workflowDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".yml" || ext == ".yaml" {
-			workflowFiles = append(workflowFiles, path)
-		}
-		return nil
-	})
-	if err != nil {
-		log.Error("workflow scan failed: %v", err)
-		return fmt.Errorf("failed to scan workflows: %w", err)
+	for _, wf := range discoveredWorkflows {
+		workflowFiles = append(workflowFiles, wf.Path)
 	}
 
-	log.Debug("found %d workflow files in %s", len(workflowFiles), workflowDir)
+	log.Debug("found %d workflow files in %s", len(workflowFiles), dir)
 
 	// ── Repo compliance check (global-only mode) ────────────────────
 	// When running from global/plugin hooks, check if the repo has
@@ -849,37 +860,21 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	// Set lifecycle from CLI flag
 	event.Lifecycle = lifecycle
 	
-	// Discover workflows
-	workflowDir := filepath.Join(dir, ".github", "hookflows")
-	if _, err := os.Stat(workflowDir); os.IsNotExist(err) {
-		// No workflows directory, allow by default
-		result := schema.NewAllowResult()
-		return outputWorkflowResult(result)
-	}
-	
-	// Find all workflow files
-	var workflowFiles []string
-	err := filepath.Walk(workflowDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext == ".yml" || ext == ".yaml" {
-			workflowFiles = append(workflowFiles, path)
-		}
-		return nil
-	})
+	// Discover workflows using the discover package
+	discoveredWFs, err := discover.Discover(dir)
 	if err != nil {
-		return fmt.Errorf("failed to scan workflows: %w", err)
+		return fmt.Errorf("failed to discover workflows: %w", err)
 	}
 	
-	if len(workflowFiles) == 0 {
+	if len(discoveredWFs) == 0 {
 		// No workflows found, allow by default
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
+	}
+
+	var workflowFiles []string
+	for _, wf := range discoveredWFs {
+		workflowFiles = append(workflowFiles, wf.Path)
 	}
 	
 	// Load and match workflows

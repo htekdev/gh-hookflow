@@ -34,6 +34,35 @@ Use `store_memory` proactively so future sessions don't repeat the same mistakes
 
 **Never store incorrect or lazy memories.** If you don't know the root cause, investigate first. A wrong memory is worse than no memory.
 
+## Test Integrity Standards
+
+**These rules are non-negotiable and enforced by `.github/hookflows/test-integrity.yaml` and `tests/e2e/test_quality_test.go`.**
+
+### Core Principles
+
+1. **Never change test assertions to match observed behavior.** If a test fails after your change, the code is wrong until proven otherwise. Investigate the root cause before touching the test.
+2. **Never weaken coverage enforcement.** Coverage thresholds use `exit 1` only — never `::warning::`, `continue-on-error`, or skip. The `.github/hookflows/coverage.yaml` enforces 70% minimum.
+3. **Test assertions must verify behavior, not existence.** Checking that a function returned *something* is not a test. Assert the specific expected value or condition.
+4. **When tests fail, investigate before fixing.** Document the root cause analysis before changing any test expectation. If you can't explain *why* the expected value changed, you haven't understood the problem.
+5. **Every test must have meaningful assertions.** No test should exist that can only pass. Tests must have at least one `t.Error`/`t.Fatal`/`assertDeny`/`assertAllow` call.
+
+### Prohibited Patterns in E2E Tests
+
+| Pattern | Why It's Banned | What To Do Instead |
+|---|---|---|
+| `t.Skip("reason")` without platform check | Hides failures as skips | Use `t.Fatal` or fix the test; `t.Skip` requires `runtime.GOOS`/`os.Getenv` guard |
+| `// TODO` / `// FIXME` / `// HACK` | Placeholder work that never gets done | Create a GitHub issue, implement fully, or remove |
+| Empty test bodies | Tests that always pass prove nothing | Add real assertions that verify behavior |
+| Commented-out assertions (`// t.Error`) | Dead assertions hide regressions | Delete or uncomment — assertions must execute |
+| `if true {` / `if false { t.Error` | Always-pass or never-execute conditions | Use real conditions that test actual behavior |
+| Changing `> 1` to `> 2` to pass | Bending assertions to match wrong behavior | Investigate why the count changed |
+| Removing `t.Error` calls to stop failures | Hiding regressions | Fix the underlying code |
+
+### Automated Enforcement
+
+- **Hookflow** (`test-integrity.yaml`): Post-lifecycle check on `tests/e2e/**` file edits/creates. Blocks unjustified `t.Skip`, `TODO/FIXME/HACK`, empty bodies, and weakened assertion patterns.
+- **AST Validator** (`tests/e2e/test_quality_test.go`): Runs as part of `go test` in CI. Parses all E2E test files and validates assertion presence, descriptive names, no unjustified skips, and no placeholder comments.
+
 ## DO NOT DO
 
 These are bad practices that have been caught in this codebase. **Never repeat them:**
@@ -44,6 +73,8 @@ These are bad practices that have been caught in this codebase. **Never repeat t
 4. **DO NOT leave platform-specific bugs unresolved.** Windows, macOS, and Linux must all pass. Cross-platform issues (like MSYS path conversion) are real bugs, not flakiness.
 5. **DO NOT use `TODO`, `FIXME`, stubs, or placeholder implementations.** Everything must be fully implemented.
 6. **DO NOT swallow errors silently.** Every error return must be explicitly handled or ignored with `_ =` (required by golangci-lint).
+7. **DO NOT use `t.Skip` to hide test failures.** If a test fails, fix the code or the test — don't skip it. `t.Skip` is only for platform/environment gating (e.g., `runtime.GOOS` checks).
+8. **DO NOT weaken test assertions to make tests pass.** Changing expected values, removing assertions, or loosening comparison operators without root cause analysis is a critical integrity violation.
 
 ## Architecture
 

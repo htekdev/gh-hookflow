@@ -45,7 +45,7 @@
       "additionalProperties": false,
       "properties": {
         "hooks": {
-          "$ref": "#/definitions/hookTrigger"
+          "anyOf": [{"$ref": "#/definitions/hookTrigger"}, {"type": "null"}]
         },
         "tool": {
           "$ref": "#/definitions/toolTrigger"
@@ -59,13 +59,13 @@
           "minItems": 1
         },
         "file": {
-          "$ref": "#/definitions/fileTrigger"
+          "anyOf": [{"$ref": "#/definitions/fileTrigger"}, {"type": "null"}]
         },
         "commit": {
-          "$ref": "#/definitions/commitTrigger"
+          "anyOf": [{"$ref": "#/definitions/commitTrigger"}, {"type": "null"}]
         },
         "push": {
-          "$ref": "#/definitions/pushTrigger"
+          "anyOf": [{"$ref": "#/definitions/pushTrigger"}, {"type": "null"}]
         }
       },
       "minProperties": 1
@@ -198,7 +198,7 @@
       "properties": {
         "lifecycle": {
           "type": "string",
-          "description": "Hook lifecycle: pre (before commit) or post (after commit). Default: pre",
+          "description": "Hook lifecycle: pre (before action) or post (after action). Default: pre",
           "enum": ["pre", "post"],
           "default": "pre"
         },
@@ -239,7 +239,7 @@
       "properties": {
         "lifecycle": {
           "type": "string",
-          "description": "Hook lifecycle: pre (before push) or post (after push). Default: pre",
+          "description": "Hook lifecycle: pre (before action) or post (after action). Default: pre",
           "enum": ["pre", "post"],
           "default": "pre"
         },
@@ -295,6 +295,10 @@
         "name": {
           "type": "string",
           "description": "Optional name for the step"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the step, used to reference outputs and outcomes in expressions"
         },
         "if": {
           "type": "string",

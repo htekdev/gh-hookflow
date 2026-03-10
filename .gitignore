@@ -11,6 +11,7 @@ dist/
 coverage
 coverage.out
 coverage.html
+e2e-coverage.out
 
 # IDE
 .idea/

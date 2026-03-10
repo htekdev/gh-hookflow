@@ -95,7 +95,7 @@ func runTest(dir, eventType, workflow string, opts testEventOptions) error {
 		workflowFiles = append(workflowFiles, path)
 	} else {
 		// Find all workflows
-		workflowDir := filepath.Join(dir, ".github", "hooks")
+		workflowDir := filepath.Join(dir, ".github", "hookflows")
 		if _, err := os.Stat(workflowDir); os.IsNotExist(err) {
 			return fmt.Errorf("no workflows directory found at %s", workflowDir)
 		}

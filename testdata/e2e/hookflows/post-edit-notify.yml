@@ -6,10 +6,10 @@ description: Logs file edit events after they occur (non-blocking)
 
 on:
   file:
+    lifecycle: post
     types:
       - edit
       - create
-    lifecycle: post
 
 blocking: false
 

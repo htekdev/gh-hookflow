@@ -2024,8 +2024,8 @@ func TestDurationCapture(t *testing.T) {
 		t.Errorf("Expected duration >= 1 second, got %v", result.Duration)
 	}
 
-	// Duration should be less than 5 seconds (reasonable margin)
-	if result.Duration > 5*time.Second {
-		t.Errorf("Expected duration <= 5 seconds, got %v", result.Duration)
+	// Duration should be less than 10 seconds (generous margin for CI + pwsh startup)
+	if result.Duration > 10*time.Second {
+		t.Errorf("Expected duration <= 10 seconds, got %v", result.Duration)
 	}
 }

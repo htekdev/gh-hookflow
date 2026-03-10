@@ -7,7 +7,7 @@ import (
 )
 
 // ============================================================================
-// GetLifecycle Tests - FileTrigger
+// GetLifecycle Tests - Triggers
 // ============================================================================
 
 func TestFileTrigger_GetLifecycle_Default(t *testing.T) {
@@ -24,9 +24,12 @@ func TestFileTrigger_GetLifecycle_Explicit(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// GetLifecycle Tests - CommitTrigger
-// ============================================================================
+func TestFileTrigger_GetLifecycle_Nil(t *testing.T) {
+	var f *FileTrigger
+	if got := f.GetLifecycle(); got != "pre" {
+		t.Errorf("Expected 'pre' for nil trigger, got '%s'", got)
+	}
+}
 
 func TestCommitTrigger_GetLifecycle_Default(t *testing.T) {
 	c := &CommitTrigger{}
@@ -41,10 +44,6 @@ func TestCommitTrigger_GetLifecycle_Explicit(t *testing.T) {
 		t.Errorf("Expected 'post', got '%s'", got)
 	}
 }
-
-// ============================================================================
-// GetLifecycle Tests - PushTrigger
-// ============================================================================
 
 func TestPushTrigger_GetLifecycle_Default(t *testing.T) {
 	p := &PushTrigger{}

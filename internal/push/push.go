@@ -4,12 +4,9 @@
 package push
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/htekdev/gh-hookflow/internal/activity"
@@ -97,7 +94,7 @@ func Run(dir string, gitArgs []string, act *activity.Activity, verbose bool) *Re
 	log.Info("phase 2: executing git push")
 	act.StartPhase(activity.PhasePush)
 
-	pushOutput, pushErr := ExecuteGitPush(dir, gitArgs)
+	pushOutput, pushErr := gitExec.Push(dir, gitArgs)
 	if pushErr != nil {
 		act.FailPhase(activity.PhasePush, pushErr.Error())
 		act.Complete(activity.StatusFailed, "Git push failed: "+pushErr.Error())
@@ -250,9 +247,8 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verb
 
 // BuildPushEvent creates a push event from current git context
 func BuildPushEvent(dir, lifecycle string) *schema.Event {
-	gitProvider := &gitContextProvider{cwd: dir}
+	branch, _ := gitExec.CurrentBranch(dir)
 
-	branch := gitProvider.getBranch()
 	ref := "refs/heads/" + branch
 	if branch == "" {
 		ref = "refs/heads/main"
@@ -270,45 +266,10 @@ func BuildPushEvent(dir, lifecycle string) *schema.Event {
 	}
 }
 
-type gitContextProvider struct {
-	cwd string
-}
-
-func (g *gitContextProvider) getBranch() string {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = g.cwd
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// ExecuteGitPush runs git push with the provided arguments
+// ExecuteGitPush runs git push with the provided arguments.
+// Delegates to the package-level gitExec which is set via build tags.
 func ExecuteGitPush(dir string, args []string) (string, error) {
-	cmdArgs := append([]string{"push"}, args...)
-	cmd := exec.Command("git", cmdArgs...)
-	cmd.Dir = dir
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-
-	output := stdout.String()
-	if stderr.Len() > 0 {
-		if output != "" {
-			output += "\n"
-		}
-		output += stderr.String()
-	}
-
-	if err != nil {
-		return output, fmt.Errorf("git push failed: %w\n%s", err, output)
-	}
-
-	return output, nil
+	return gitExec.Push(dir, args)
 }
 
 // LifecycleToPhase converts a lifecycle string to an activity Phase

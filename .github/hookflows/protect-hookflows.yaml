@@ -4,7 +4,6 @@ description: Prevents weakening or disabling of hookflow governance files
 
 on:
   file:
-    lifecycle: pre
     types:
       - edit
       - create

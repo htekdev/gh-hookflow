@@ -7,10 +7,10 @@ description: Validates config files after editing - blocks next tool call on fai
 
 on:
   file:
+    lifecycle: post
     types:
       - edit
       - create
-    lifecycle: post
     paths:
       - '**/*.config.*'
       - '**/config.*'

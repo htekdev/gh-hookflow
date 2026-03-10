@@ -1,0 +1,58 @@
+# Hookflow: Block mocking in E2E tests
+# E2E tests must test real behavior - no mocking frameworks or patterns allowed.
+
+name: E2E No Mocking
+description: Blocks all mocking patterns in tests/e2e/ to ensure true end-to-end testing
+
+on:
+  file:
+    types:
+      - create
+      - edit
+    paths:
+      - "tests/e2e/**"
+
+blocking: true
+
+steps:
+  - name: Block mock imports in new files
+    if: "${{ contains(event.file.content, 'testify/mock') || contains(event.file.content, 'gomock') || contains(event.file.content, 'go-mock') || contains(event.file.content, 'mockgen') || contains(event.file.content, 'httpmock') }}"
+    run: |
+      Write-Host "BLOCKED: Mocking frameworks are not allowed in E2E tests (tests/e2e/)."
+      Write-Host ""
+      Write-Host "Detected mock framework import in: ${{ event.file.path }}"
+      Write-Host ""
+      Write-Host "E2E tests must execute the real hookflow binary via exec.Command."
+      Write-Host "No mocking, stubbing, or faking of internal modules is permitted."
+      Write-Host ""
+      Write-Host "Blocked patterns: testify/mock, gomock, go-mock, mockgen, httpmock"
+      exit 1
+
+  - name: Block mock code patterns in new files
+    if: "${{ contains(event.file.content, 'mock.') || contains(event.file.content, 'Mock{') || contains(event.file.content, 'NewMock') || contains(event.file.content, 'mockCtrl') }}"
+    run: |
+      Write-Host "BLOCKED: Mock code patterns are not allowed in E2E tests (tests/e2e/)."
+      Write-Host ""
+      Write-Host "Detected mock usage in: ${{ event.file.path }}"
+      Write-Host ""
+      Write-Host "E2E tests must not use mock objects, mock controllers, or mock constructors."
+      Write-Host "Test through the real hookflow binary instead."
+      Write-Host ""
+      Write-Host "Blocked patterns: mock., Mock{}, NewMock*, mockCtrl"
+      exit 1
+
+  - name: Block stub and fake patterns in new files
+    if: "${{ contains(event.file.content, 'Stub{') || contains(event.file.content, 'NewStub') || contains(event.file.content, 'Fake{') || contains(event.file.content, 'NewFake') || contains(event.file.content, 'fakeRunner') || contains(event.file.content, 'fakeDetector') || contains(event.file.content, 'stubRunner') }}"
+    run: |
+      Write-Host "BLOCKED: Stub/Fake patterns are not allowed in E2E tests (tests/e2e/)."
+      Write-Host ""
+      Write-Host "Detected stub or fake in: ${{ event.file.path }}"
+      Write-Host ""
+      Write-Host "E2E tests must not use stubs or fakes of internal modules."
+      Write-Host "The test suite uses the real hookflow binary with exec.Command."
+      Write-Host ""
+      Write-Host "Blocked patterns: Stub{}, NewStub*, Fake{}, NewFake*, fakeRunner, fakeDetector, stubRunner"
+      exit 1
+
+  - name: E2E file passes mocking check
+    run: Write-Host "E2E file passes no-mocking check"

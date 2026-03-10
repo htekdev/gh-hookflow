@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
       
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
       
       - name: Run tests with coverage
         run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
@@ -51,6 +51,54 @@ jobs:
         with:
           name: coverage-report
           path: coverage.out
+
+  e2e-suite:
+    name: E2E Suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install PowerShell (if needed)
+        if: runner.os == 'Linux'
+        run: |
+          if ! command -v pwsh &> /dev/null; then
+            echo "pwsh not found, skipping (pre-installed on GitHub runners)"
+          fi
+
+      - name: Run E2E test suite
+        run: go test ./tests/e2e/... -v -timeout 300s
+
+      - name: Check E2E coverage threshold (80%)
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f e2e-coverage.out ]; then
+            echo "e2e-coverage.out not found — tests may have failed before coverage merge"
+            exit 1
+          fi
+          COVERAGE=$(go tool cover -func=e2e-coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "E2E binary coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "::warning::E2E coverage ${COVERAGE}% is below 80% threshold"
+          fi
+
+      - name: Upload E2E coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-coverage-${{ matrix.os }}
+          path: e2e-coverage.out
 
   build:
     name: Build
@@ -79,7 +127,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
       
       - name: Build
         env:

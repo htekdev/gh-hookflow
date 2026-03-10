@@ -4,7 +4,6 @@ description: Runs golangci-lint before commit to catch lint errors early
 
 on:
   commit:
-    lifecycle: pre
     paths:
       - 'cmd/**'
       - 'internal/**'
