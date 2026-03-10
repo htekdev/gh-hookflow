@@ -432,11 +432,8 @@ func TestBuiltinToJSON(t *testing.T) {
 func TestBuiltinFromJSON(t *testing.T) {
 	got, err := builtinFromJSON(`{"key":"value"}`)
 	require.NoError(t, err)
-	m, ok := got.(map[string]interface{})
-	if !ok {
-		t.Errorf("builtinFromJSON() returned %T, want map", got)
-		return
-	}
+	require.IsType(t, map[string]interface{}{}, got)
+	m := got.(map[string]interface{})
 	if m["key"] != "value" {
 		t.Errorf("builtinFromJSON() key = %v, want 'value'", m["key"])
 	}
@@ -865,12 +862,12 @@ func TestFromJSONToJSONComplex(t *testing.T) {
 			result, err := builtinFromJSON(jsonStr)
 			require.NoError(t, err)
 			// Normalize both through JSON for content equality comparison
-			wantJSON, err := json.Marshal(tt.input)
+			wantBytes, err := json.Marshal(tt.input)
 			require.NoError(t, err)
-			gotJSON, err := json.Marshal(result)
+			gotBytes, err := json.Marshal(result)
 			require.NoError(t, err)
-			if string(gotJSON) != string(wantJSON) {
-				t.Errorf("round-trip content mismatch:\n  got  %s\n  want %s", gotJSON, wantJSON)
+			if string(gotBytes) != string(wantBytes) {
+				t.Errorf("round-trip content mismatch:\n  got  %s\n  want %s", gotBytes, wantBytes)
 			}
 		})
 	}
