@@ -250,8 +250,10 @@ func TestLogsPathFlag(t *testing.T) {
 }
 
 func TestLogsTailFlag(t *testing.T) {
-	output, _ := runHookflowCmd(t, []string{"logs", "-n", "5"}, nil)
-	_ = output
+	output, err := runHookflowCmd(t, []string{"logs", "-n", "5"}, nil)
+	if err != nil {
+		t.Errorf("Expected logs -n 5 to succeed, got error: %v\nOutput: %s", err, output)
+	}
 }
 
 func TestValidateInvalidFileUnknownField(t *testing.T) {
@@ -308,7 +310,7 @@ func TestSessionErrorClearAfterRead(t *testing.T) {
 		env: []string{"HOOKFLOW_SESSION_DIR=" + sessionDir},
 	})
 	if result == nil || result.PermissionDecision != "deny" {
-		t.Skip("Session error gate did not deny as expected")
+		t.Fatalf("Session error gate should deny when error.md exists, got: %v", result)
 	}
 
 	_ = os.Remove(errorPath)
@@ -659,10 +661,13 @@ func TestValidateWorkflowMissingName(t *testing.T) {
 		"no-name.yml": "on:\n  file:\n    paths: [\"**/*\"]\nsteps:\n  - name: check\n    run: echo ok\n",
 	})
 
-	output, _ := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	output, err := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	if err == nil {
+		t.Errorf("Expected validate to fail for workflow missing 'name', but it succeeded.\nOutput: %s", output)
+	}
 	lower := strings.ToLower(output)
-	if !strings.Contains(lower, "name") || !strings.Contains(lower, "required") {
-		t.Logf("Validation output for missing name: %s", output)
+	if !strings.Contains(lower, "name") {
+		t.Errorf("Expected validation output to mention 'name', got:\n%s", output)
 	}
 }
 
@@ -671,10 +676,13 @@ func TestValidateWorkflowMissingSteps(t *testing.T) {
 		"no-steps.yml": "name: No Steps\non:\n  file:\n    paths: [\"**/*\"]\n",
 	})
 
-	output, _ := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	output, err := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	if err == nil {
+		t.Errorf("Expected validate to fail for workflow missing 'steps', but it succeeded.\nOutput: %s", output)
+	}
 	lower := strings.ToLower(output)
-	if !strings.Contains(lower, "step") || !strings.Contains(lower, "required") {
-		t.Logf("Validation output for missing steps: %s", output)
+	if !strings.Contains(lower, "step") {
+		t.Errorf("Expected validation output to mention 'step', got:\n%s", output)
 	}
 }
 
@@ -683,10 +691,13 @@ func TestValidateWorkflowMissingTrigger(t *testing.T) {
 		"no-trigger.yml": "name: No Trigger\nsteps:\n  - name: check\n    run: echo ok\n",
 	})
 
-	output, _ := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	output, err := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
+	if err == nil {
+		t.Errorf("Expected validate to fail for workflow missing 'on' trigger, but it succeeded.\nOutput: %s", output)
+	}
 	lower := strings.ToLower(output)
-	if !strings.Contains(lower, "on") || !strings.Contains(lower, "required") {
-		t.Logf("Validation output for missing trigger: %s", output)
+	if !strings.Contains(lower, "on") && !strings.Contains(lower, "trigger") {
+		t.Errorf("Expected validation output to mention 'on' or 'trigger', got:\n%s", output)
 	}
 }
 
@@ -697,9 +708,9 @@ func TestValidateWorkflowMissingTrigger(t *testing.T) {
 func TestPostToolUseEventWithTranscript(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-handler.yml": `name: Post Handler
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ["**/*.json"]
 steps:
   - name: validate json
@@ -732,10 +743,10 @@ steps:
 func TestPostToolUseBlockingDenyOnFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-block.yml": `name: Post Block
-lifecycle: post
 blocking: true
 on:
   file:
+    lifecycle: post
     paths: ["**/*.json"]
 steps:
   - name: validate
@@ -757,10 +768,10 @@ steps:
 func TestPostToolUseNonBlockingAllowOnFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-notify.yml": `name: Post Notify
-lifecycle: post
 blocking: false
 on:
   file:
+    lifecycle: post
     paths: ["**/*"]
 steps:
   - name: notify

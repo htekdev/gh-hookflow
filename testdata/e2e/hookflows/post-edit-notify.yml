@@ -3,10 +3,10 @@
 
 name: Post-Edit Notification
 description: Logs file edit events after they occur (non-blocking)
-lifecycle: post
 
 on:
   file:
+    lifecycle: post
     types:
       - edit
       - create

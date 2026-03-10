@@ -256,17 +256,7 @@ func gitInit(t *testing.T, dir string) {
 	}
 }
 
-// gitAdd stages a file in the git repo
-func gitAdd(t *testing.T, dir, file string) {
-	t.Helper()
-	cmd := exec.Command("git", "add", file)
-	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git add %s failed: %v\n%s", file, err, out)
-	}
-}
-
-// buildEventJSON constructs a hook input JSON string from the given parameters.
+// buildEventJSONconstructs a hook input JSON string from the given parameters.
 func buildEventJSON(toolName string, toolArgs map[string]interface{}, cwd string) string {
 	argsJSON, err := json.Marshal(toolArgs)
 	if err != nil {

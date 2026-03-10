@@ -10,7 +10,6 @@ import (
 func TestToolTriggerNameMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-create.yml": `name: Tool Create
-lifecycle: pre
 on:
   tool:
     name: create
@@ -34,7 +33,6 @@ steps:
 func TestToolTriggerNameNoMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-edit-only.yml": `name: Tool Edit Only
-lifecycle: pre
 on:
   tool:
     name: edit
@@ -58,7 +56,6 @@ steps:
 func TestToolTriggerWithArgs(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-ts-only.yml": `name: Tool TS Only
-lifecycle: pre
 on:
   tool:
     name: create
@@ -93,7 +90,6 @@ steps:
 func TestToolTriggerArgMissing(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-with-arg.yml": `name: Tool With Arg
-lifecycle: pre
 on:
   tool:
     name: create
@@ -120,7 +116,6 @@ steps:
 func TestMultipleToolTriggers(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"multi-tools.yml": `name: Multi Tools
-lifecycle: pre
 on:
   tools:
     - name: create
@@ -169,7 +164,6 @@ steps:
 func TestToolTriggerShellCommand(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-powershell.yml": `name: Tool PowerShell
-lifecycle: pre
 on:
   tool:
     name: powershell

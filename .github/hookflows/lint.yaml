@@ -1,7 +1,6 @@
 
 name: Lint Enforcement
 description: Runs golangci-lint before commit to catch lint errors early
-lifecycle: pre
 
 on:
   commit:

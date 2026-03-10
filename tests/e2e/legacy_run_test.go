@@ -14,7 +14,6 @@ import (
 func TestLegacyRunFileEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"file-check.yml": `name: File Check
-lifecycle: pre
 on:
   file:
     paths: ["src/**/*.ts"]
@@ -52,7 +51,6 @@ steps:
 func TestLegacyRunCommitEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-check.yml": `name: Commit Check
-lifecycle: pre
 on:
   commit:
     paths: ["**/*"]
@@ -100,7 +98,6 @@ steps:
 func TestLegacyRunPushEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-check.yml": `name: Push Check
-lifecycle: pre
 on:
   push:
     branches: ["main", "release/*"]
@@ -137,7 +134,6 @@ steps:
 func TestLegacyRunHookEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"hook-check.yml": `name: Hook Check
-lifecycle: pre
 on:
   hooks:
     types: ["preToolUse"]
@@ -186,7 +182,6 @@ steps:
 func TestLegacyRunToolEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-check.yml": `name: Tool Check
-lifecycle: pre
 on:
   tool:
     - name: powershell
@@ -225,7 +220,6 @@ steps:
 func TestLegacyRunNoEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -253,7 +247,6 @@ steps:
 func TestLegacyRunNoMatchingWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"only-push.yml": `name: Only Push
-lifecycle: pre
 on:
   push:
     branches: ["main"]
@@ -291,7 +284,6 @@ steps:
 func TestLegacyRunDeniesOnStepFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fail-check.yml": `name: Fail Check
-lifecycle: pre
 on:
   file:
     paths: ["**/*.env"]
@@ -329,7 +321,6 @@ steps:
 func TestLegacyRunStdinInput(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"stdin-check.yml": `name: Stdin Check
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -373,7 +364,6 @@ steps:
 func TestTestCmdHookEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"hook-test.yml": `name: Hook Test
-lifecycle: pre
 on:
   hooks:
     types: ["preToolUse"]
@@ -401,7 +391,6 @@ steps:
 func TestTestCmdFileCreateEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"file-test.yml": `name: File Test
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -429,7 +418,6 @@ steps:
 func TestTestCmdCommitWithPathOverride(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-paths.yml": `name: Commit Paths
-lifecycle: pre
 on:
   commit:
     paths: ["docs/**/*"]
@@ -463,7 +451,6 @@ func TestTestCmdNonBlockingWorkflow(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"nonblocking.yml": `name: Non-Blocking
-lifecycle: pre
 blocking: false
 on:
   file:
@@ -514,7 +501,6 @@ func TestTestCmdWorkflowLoadError(t *testing.T) {
 func TestRunWorkflowDirectExecution(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"direct-run.yml": `name: Direct Run
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -541,7 +527,6 @@ steps:
 func TestRunWorkflowMissing(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"exists.yml": `name: Exists
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]

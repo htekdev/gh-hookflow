@@ -13,7 +13,6 @@ import (
 func TestErrorGateAllowsViewOfErrorFile(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -55,9 +54,9 @@ steps:
 func TestErrorGatePostClearsErrorFile(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ["**/*"]
 steps:
   - name: allow
@@ -99,7 +98,6 @@ steps:
 func TestErrorGateNormalAfterClearance(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -134,9 +132,9 @@ steps:
 func TestErrorGateSkipsPostLifecycle(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-dummy.yml": `name: Post Dummy
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ["**/*"]
 steps:
   - name: notify
@@ -176,7 +174,6 @@ steps:
 func TestErrorGateNonViewDenied(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -218,7 +215,6 @@ steps:
 func TestErrorGateViewWrongPathDenied(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -260,7 +256,6 @@ steps:
 func TestErrorGateFullCycle(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -327,7 +322,6 @@ steps:
 func TestExtractToolArgsPathStringFormat(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]

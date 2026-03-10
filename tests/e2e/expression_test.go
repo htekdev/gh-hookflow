@@ -11,7 +11,6 @@ import (
 func TestExpressionStartsWith(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"starts-with.yml": `name: StartsWith Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -47,7 +46,6 @@ steps:
 func TestExpressionFormat(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"format-test.yml": `name: Format Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -77,7 +75,6 @@ steps:
 func TestExpressionJoin(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"join-test.yml": `name: Join Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -101,7 +98,6 @@ steps:
 func TestExpressionToJSON(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tojson-test.yml": `name: ToJSON Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -125,7 +121,6 @@ steps:
 func TestExpressionFromJSON(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-test.yml": `name: FromJSON Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*.json']
@@ -161,7 +156,6 @@ steps:
 func TestExpressionEquals(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"equals-test.yml": `name: Equals Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -189,7 +183,6 @@ steps:
 func TestExpressionStepsContext(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"steps-ctx.yml": `name: Steps Context
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -218,7 +211,6 @@ steps:
 func TestExpressionFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"failure-expr.yml": `name: Failure Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -251,7 +243,6 @@ steps:
 func TestExpressionEnvContext(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"env-ctx.yml": `name: Env Context
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -280,7 +271,6 @@ steps:
 func TestExpressionNegation(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"negation.yml": `name: Negation Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -316,7 +306,6 @@ steps:
 func TestExpressionEndsWith(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"endswith.yml": `name: EndsWith Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -343,7 +332,6 @@ steps:
 func TestExpressionLogicalOperators(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"logical-ops.yml": `name: Logical Operators
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -387,7 +375,6 @@ steps:
 func TestExpressionInRunStep(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"expr-in-run.yml": `name: Expression In Run
-lifecycle: pre
 on:
   file:
     paths: ['**/*']

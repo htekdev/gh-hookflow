@@ -17,7 +17,6 @@ func TestTranscriptRecordsEntries(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"allow-all.yml": `name: Allow All
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -81,7 +80,6 @@ func TestTranscriptCountExpression(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"count-check.yml": `name: Transcript Count Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -129,7 +127,6 @@ func TestTranscriptLastExpression(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"last-check.yml": `name: Transcript Last
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -177,7 +174,6 @@ func TestTranscriptSinceExpression(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"since-check.yml": `name: Transcript Since
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -216,7 +212,6 @@ func TestTranscriptFullDump(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"transcript-all.yml": `name: Full Transcript
-lifecycle: pre
 on:
   file:
     paths: ['**/*']

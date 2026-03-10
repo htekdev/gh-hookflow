@@ -1,9 +1,9 @@
 name: PR Check Monitor
 description: After push, monitors linked PR checks and reports results back to the agent
-lifecycle: post
 
 on:
   push:
+    lifecycle: post
 
 blocking: true
 

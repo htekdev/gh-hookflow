@@ -11,7 +11,6 @@ import (
 func TestExpressionOrOperator(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"or-expr.yml": `name: OR Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -36,7 +35,6 @@ steps:
 func TestExpressionAndOperator(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"and-expr.yml": `name: AND Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -70,7 +68,6 @@ steps:
 func TestExpressionNotOperator(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"not-expr.yml": `name: NOT Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -106,7 +103,6 @@ steps:
 func TestExpressionNumericComparison(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"numeric-cmp.yml": `name: Numeric Comparison
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -155,7 +151,6 @@ steps:
 func TestExpressionStartsWithPrefix(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"starts-with.yml": `name: StartsWith
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -180,7 +175,6 @@ steps:
 func TestExpressionEndsWithSuffix(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"ends-with.yml": `name: EndsWith
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -205,7 +199,6 @@ steps:
 func TestExpressionContains(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"contains-expr.yml": `name: Contains
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -233,7 +226,6 @@ steps:
 func TestExpressionStepOutcome(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"step-outcome.yml": `name: Step Outcome
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -263,7 +255,6 @@ steps:
 func TestExpressionFailureFunction(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"failure-fn.yml": `name: Failure Function
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -291,7 +282,6 @@ steps:
 func TestExpressionAlwaysFunction(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"always-fn.yml": `name: Always Function
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -321,7 +311,6 @@ steps:
 func TestExpressionFormatFunction(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"format-expr.yml": `name: Format Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -345,7 +334,6 @@ steps:
 func TestExpressionEnvAccess(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"env-expr.yml": `name: Env Expression
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -375,7 +363,6 @@ steps:
 func TestExpressionNestedPropertyAccess(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"nested-prop.yml": `name: Nested Property
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -403,7 +390,6 @@ steps:
 func TestExpressionHookType(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"hook-type.yml": `name: Hook Type
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]

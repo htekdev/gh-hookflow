@@ -12,7 +12,6 @@ import (
 func TestRunSpecificWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"named-wf.yml": `name: Named Workflow
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -34,7 +33,6 @@ steps:
 func TestRunWorkflowNotFound(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"exists.yml": `name: Exists
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -55,7 +53,6 @@ steps:
 func TestRunLegacyEventMode(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"file-wf.yml": `name: File Workflow
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -149,7 +146,6 @@ func TestCreateCommand(t *testing.T) {
 func TestDiscoverWithGlob(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"pre-check.yml": `name: Pre Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -158,16 +154,15 @@ steps:
     run: Write-Host "x"
 `,
 		"post-notify.yml": `name: Post Notify
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ['**/*']
 steps:
   - name: y
     run: Write-Host "y"
 `,
 		"commit-check.yml": `name: Commit Check
-lifecycle: pre
 on:
   commit:
 steps:
@@ -197,7 +192,6 @@ steps:
 func TestValidateAllTriggerTypes(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"all-triggers.yml": `name: All Triggers
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]
@@ -238,7 +232,6 @@ steps:
 func TestValidateFileFlag(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"specific.yml": `name: Specific
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -260,7 +253,6 @@ steps:
 func TestEventDetectionViewTool(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"hook-all.yml": `name: Hook All
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]
@@ -281,7 +273,6 @@ steps:
 func TestEventDetectionPowershellTool(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tool-all.yml": `name: Tool All
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]
@@ -301,7 +292,6 @@ steps:
 func TestFilePathsIgnoreMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"ignore-tests.yml": `name: Ignore Tests
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -340,7 +330,6 @@ steps:
 func TestRawInputWithStringToolArgs(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"catch-all.yml": `name: Catch All
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]

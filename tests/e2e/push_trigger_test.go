@@ -9,7 +9,6 @@ import (
 func TestPushTriggerBranchMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-main.yml": `name: Push Main
-lifecycle: pre
 on:
   push:
     branches:
@@ -31,7 +30,6 @@ steps:
 func TestPushTriggerBranchNoMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-main-only.yml": `name: Push Main Only
-lifecycle: pre
 on:
   push:
     branches:
@@ -55,7 +53,6 @@ steps:
 func TestPushTriggerBranchWildcard(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-release.yml": `name: Push Release
-lifecycle: pre
 on:
   push:
     branches:
@@ -77,7 +74,6 @@ steps:
 func TestPushTriggerBranchNegation(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-not-dev.yml": `name: Push Not Dev
-lifecycle: pre
 on:
   push:
     branches:
@@ -101,7 +97,6 @@ steps:
 func TestPushTriggerBranchesIgnore(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-ignore.yml": `name: Push Ignore
-lifecycle: pre
 on:
   push:
     branches-ignore:
@@ -125,7 +120,6 @@ steps:
 func TestPushTriggerTagMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-tags.yml": `name: Push Tags
-lifecycle: pre
 on:
   push:
     tags:
@@ -147,7 +141,6 @@ steps:
 func TestPushTriggerTagNoMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-vtags.yml": `name: Push V Tags
-lifecycle: pre
 on:
   push:
     tags:
@@ -170,7 +163,6 @@ steps:
 func TestPushTriggerTagsIgnore(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-tags-ignore.yml": `name: Push Tags Ignore
-lifecycle: pre
 on:
   push:
     tags-ignore:
@@ -193,7 +185,6 @@ steps:
 func TestPushTriggerBarePush(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-bare.yml": `name: Bare Push
-lifecycle: pre
 on:
   push:
 blocking: true
@@ -213,7 +204,6 @@ steps:
 func TestPushTriggerRefExpression(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-ref-check.yml": `name: Push Ref Check
-lifecycle: pre
 on:
   push:
 steps:
@@ -234,7 +224,6 @@ steps:
 func TestCommitAndPushTriggerBothMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-block.yml": `name: Commit Block
-lifecycle: pre
 on:
   commit:
 blocking: true
@@ -245,7 +234,6 @@ steps:
       exit 1
 `,
 		"push-block.yml": `name: Push Block
-lifecycle: pre
 on:
   push:
 blocking: true

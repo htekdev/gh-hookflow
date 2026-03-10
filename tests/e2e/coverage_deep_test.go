@@ -27,14 +27,15 @@ func TestCreateDryRun(t *testing.T) {
 		"placeholder.yml": "name: Placeholder\non:\n  file:\n    paths: [\"**/*\"]\nsteps:\n  - name: placeholder\n    run: Write-Host \"ok\"\n",
 	})
 
-	output, _ := runHookflowCmd(t,
+	output, err := runHookflowCmd(t,
 		[]string{"create", "block .env file creation", "--dry-run", "--dir", workspace},
 		nil)
 
-	// dry-run should print workflow to stdout, not save a file
-	if strings.Contains(output, "Error") && !strings.Contains(output, "COPILOT") {
-		// If AI is not available, the error is expected
-		t.Logf("Create dry-run output (AI may not be available): %s", output[:min(len(output), 200)])
+	// dry-run should either succeed or fail gracefully when AI is unavailable
+	if err != nil {
+		if !strings.Contains(strings.ToUpper(output), "COPILOT") && !strings.Contains(strings.ToUpper(output), "API") && !strings.Contains(strings.ToUpper(output), "TOKEN") {
+			t.Errorf("create --dry-run failed with unexpected error: %v\nOutput: %s", err, output)
+		}
 	}
 }
 
@@ -380,7 +381,7 @@ func TestTestCmdNoWorkflowsFound(t *testing.T) {
 		nil)
 	if !strings.Contains(strings.ToLower(output), "no workflows") &&
 		!strings.Contains(strings.ToLower(output), "no hookflow") {
-		t.Logf("Expected no-workflows message, got: %s", output)
+		t.Errorf("Expected no-workflows message, got: %s", output)
 	}
 }
 
@@ -450,7 +451,7 @@ func TestInitForceOverwrite(t *testing.T) {
 
 func TestValidateWorkflowWithAllFields(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
-		"complete.yml": "name: Complete Workflow\ndescription: A workflow using all supported fields\nlifecycle: pre\nblocking: true\nconcurrency:\n  group: my-group\n  max-parallel: 3\nenv:\n  GLOBAL_VAR: \"value\"\non:\n  file:\n    types: [\"create\", \"edit\"]\n    paths: [\"src/**\"]\n    paths-ignore: [\"src/**/*.test.js\"]\nsteps:\n  - name: first step\n    id: step1\n    if: event.file.action == 'create'\n    run: Write-Host \"creating\"\n    shell: pwsh\n    env:\n      STEP_VAR: \"step-value\"\n    working-directory: \".\"\n    timeout: 30\n    continue-on-error: false\n",
+		"complete.yml": "name: Complete Workflow\ndescription: A workflow using all supported fields\nblocking: true\nconcurrency:\n  group: my-group\n  max-parallel: 3\nenv:\n  GLOBAL_VAR: \"value\"\non:\n  file:\n    types: [\"create\", \"edit\"]\n    paths: [\"src/**\"]\n    paths-ignore: [\"src/**/*.test.js\"]\nsteps:\n  - name: first step\n    id: step1\n    if: event.file.action == 'create'\n    run: Write-Host \"creating\"\n    shell: pwsh\n    env:\n      STEP_VAR: \"step-value\"\n    working-directory: \".\"\n    timeout: 30\n    continue-on-error: false\n",
 	})
 
 	output, _ := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)

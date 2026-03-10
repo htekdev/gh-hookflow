@@ -1,9 +1,9 @@
 name: Post API Spec Validation
 description: Validates api-spec.json has all required fields after creation
-lifecycle: post
 
 on:
   file:
+    lifecycle: post
     types:
       - create
       - edit

@@ -1,8 +1,6 @@
 
 name: Test Coverage Enforcement
 description: Ensures code changes maintain minimum test coverage before commit
-lifecycle: pre
-
 
 on:
   commit:

@@ -106,7 +106,6 @@ func TestInitIdempotent(t *testing.T) {
 func TestValidateValidWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"valid.yml": `name: Valid Workflow
-lifecycle: pre
 on:
   file:
     paths: ['**/*.env']
@@ -126,7 +125,6 @@ steps:
 func TestValidateInvalidWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"invalid.yml": `name: Missing Steps
-lifecycle: pre
 on:
   file:
     paths: ['*.ts']
@@ -146,7 +144,6 @@ on:
 func TestValidateSpecificFile(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"check-me.yml": `name: Check Me
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -168,9 +165,12 @@ func TestValidateEmptyDir(t *testing.T) {
 	workspace := t.TempDir()
 	// No .github/hookflows directory at all
 	output, err := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
-	_ = err
-	_ = output
-	// Should not crash
+	if err != nil {
+		t.Fatalf("validate on empty dir should not crash: %v\n%s", err, output)
+	}
+	if strings.Contains(output, "panic") {
+		t.Errorf("validate on empty dir should not panic, got: %s", output)
+	}
 }
 
 // ── discover command tests are in discover_test.go ──────────────────
@@ -199,8 +199,9 @@ func TestLogsTail(t *testing.T) {
 
 	// Now check logs
 	output, err := runHookflowCmd(t, []string{"logs", "-n", "10"}, nil)
-	_ = err // logs might not have a file yet
-	_ = output
+	if err != nil {
+		t.Errorf("logs -n 10 should succeed: %v\n%s", err, output)
+	}
 }
 
 func TestLogsDebugMode(t *testing.T) {
@@ -217,15 +218,20 @@ func TestLogsDebugMode(t *testing.T) {
 	_, _ = runHookflow(t, workspace, eventJSON, "preToolUse", opts)
 
 	// Verify debug logging happened by checking log file
-	output, _ := runHookflowCmd(t, []string{"logs", "--path"}, nil)
+	output, err := runHookflowCmd(t, []string{"logs", "--path"}, nil)
+	if err != nil {
+		t.Fatalf("logs --path failed: %v\n%s", err, output)
+	}
 	logPath := strings.TrimSpace(output)
-	if logPath != "" {
-		if data, err := os.ReadFile(logPath); err == nil {
-			if len(data) > 0 {
-				// Debug logs should be more verbose
-				t.Logf("Log file size with debug: %d bytes", len(data))
-			}
-		}
+	if logPath == "" {
+		t.Fatal("expected non-empty log path when debug mode is enabled")
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read log file %s: %v", logPath, err)
+	}
+	if len(data) == 0 {
+		t.Errorf("expected log file to have content with debug enabled, but it was empty")
 	}
 }
 
@@ -275,7 +281,6 @@ func TestCheckSetupCommand(t *testing.T) {
 func TestTestCommandFileEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"block-env.yml": `name: Block Env Files
-lifecycle: pre
 on:
   file:
     paths: ['**/*.env']
@@ -295,17 +300,18 @@ steps:
 		"--action", "create",
 		"--dir", workspace,
 	}, nil)
-	_ = err
+	if err != nil {
+		t.Fatalf("test command failed: %v\n%s", err, output)
+	}
 	// The test command should show matching workflows
 	if !strings.Contains(strings.ToLower(output), "block") || !strings.Contains(strings.ToLower(output), "env") {
-		t.Logf("test command output: %s", output)
+		t.Errorf("expected test output to reference block env workflow, got: %s", output)
 	}
 }
 
 func TestTestCommandCommitEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-lint.yml": `name: Commit Lint
-lifecycle: pre
 on:
   git_commit:
 blocking: true
@@ -321,14 +327,14 @@ steps:
 		"--message", "fix: something",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	_ = output
+	if err != nil {
+		t.Fatalf("test command for git_commit should succeed: %v\n%s", err, output)
+	}
 }
 
 func TestTestCommandPushEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"pre-push.yml": `name: Pre Push
-lifecycle: pre
 on:
   push:
     branches: [main]
@@ -345,8 +351,9 @@ steps:
 		"--branch", "main",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	_ = output
+	if err != nil {
+		t.Fatalf("test command for push should succeed: %v\n%s", err, output)
+	}
 }
 
 // ── git-push-status tests ───────────────────────────────────────────

@@ -14,9 +14,9 @@ func TestSessionErrorWriteAndRead(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-fail.yml": `name: Post Fail
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ['**/*']
 blocking: true
 steps:
@@ -53,7 +53,6 @@ func TestSessionErrorBlocksSubsequentCalls(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"allow-all.yml": `name: Allow All
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -86,7 +85,6 @@ steps:
 func TestDiscoverCommand(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"workflow-a.yml": `name: Workflow A
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -95,9 +93,9 @@ steps:
     run: Write-Host "A"
 `,
 		"workflow-b.yml": `name: Workflow B
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ['**/*']
 steps:
   - name: B
@@ -122,7 +120,6 @@ steps:
 func TestValidateMultipleValid(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"valid1.yml": `name: Valid 1
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -131,9 +128,9 @@ steps:
     run: Write-Host "ok"
 `,
 		"valid2.yml": `name: Valid 2
-lifecycle: post
 on:
   commit:
+    lifecycle: post
 steps:
   - name: Step 2
     run: Write-Host "ok"
@@ -149,7 +146,6 @@ steps:
 func TestValidateInvalidMissingSteps(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"invalid.yml": `name: Invalid
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -159,7 +155,7 @@ on:
 
 	output, err := runHookflowCmd(t, []string{"validate", "--dir", workspace}, nil)
 	if err == nil {
-		t.Logf("Expected validate to fail for missing steps, output: %s", output)
+		t.Errorf("Expected validate to fail for missing steps, output: %s", output)
 	}
 }
 
@@ -169,8 +165,7 @@ func TestLogsCommand(t *testing.T) {
 	output, err := runHookflowCmd(t, []string{"logs"}, nil)
 	// logs command should succeed (even if no logs exist)
 	if err != nil {
-		// Just log, don't fail — logs command might not find files
-		t.Logf("logs command output: %s", output)
+		t.Fatalf("logs command failed: %v\n%s", err, output)
 	}
 }
 
@@ -218,7 +213,6 @@ func TestInitCommand(t *testing.T) {
 func TestValidatePushWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-wf.yml": `name: Push Workflow
-lifecycle: pre
 on:
   push:
     branches:
@@ -244,7 +238,6 @@ steps:
 func TestValidateHooksWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"hooks-wf.yml": `name: Hooks Workflow
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]
@@ -266,7 +259,6 @@ steps:
 func TestWorkflowEnvVars(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"env-test.yml": `name: Env Test
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -300,7 +292,6 @@ steps:
 func TestStepEnvVars(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"step-env.yml": `name: Step Env
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -329,7 +320,6 @@ steps:
 func TestStepWorkingDirectory(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"workdir.yml": `name: Work Dir
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -359,7 +349,6 @@ steps:
 func TestMultipleWorkflowsTriggered(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"wf-a.yml": `name: Workflow A
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -368,7 +357,6 @@ steps:
     run: Write-Host "Workflow A executed"
 `,
 		"wf-b.yml": `name: Workflow B
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -391,7 +379,6 @@ steps:
 func TestNoMatchingWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"ts-only.yml": `name: TS Only
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -416,7 +403,6 @@ steps:
 func TestContinueOnErrorStep(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"coe.yml": `name: Continue On Error
-lifecycle: pre
 on:
   file:
     paths: ['**/*']

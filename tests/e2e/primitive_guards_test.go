@@ -39,12 +39,7 @@ func TestPostLifecycleSkipsPrimitiveGuards(t *testing.T) {
 	result, output := runHookflow(t, workspace, eventJSON, "postToolUse", nil)
 
 	// Post lifecycle should NOT be blocked by primitive guards
-	if result.PermissionDecision == "deny" {
-		// Check it's not the git push guard that denied
-		if output != "" {
-			t.Logf("Post-lifecycle output (may deny for other reasons): %s", output)
-		}
-	}
+	assertAllow(t, result, output)
 }
 
 // TestBlockGitPushWithFlags verifies git push with various flags is blocked.

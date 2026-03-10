@@ -15,9 +15,9 @@ func TestSessionErrorWrittenOnPostFailure(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-block.yml": `name: Post Block
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ['**/*.json']
     types: [create]
 blocking: true
@@ -59,7 +59,6 @@ func TestSessionDirIsolation(t *testing.T) {
 
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"track.yml": `name: Tracker
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -86,10 +85,10 @@ steps:
 	t2 := filepath.Join(session2, "transcript.jsonl")
 
 	if _, err := os.Stat(t1); os.IsNotExist(err) {
-		t.Log("session 1 transcript not created")
+		t.Errorf("session 1 transcript not created at %s", t1)
 	}
 	if _, err := os.Stat(t2); os.IsNotExist(err) {
-		t.Log("session 2 transcript not created")
+		t.Errorf("session 2 transcript not created at %s", t2)
 	}
 }
 
@@ -98,7 +97,6 @@ steps:
 func TestSchemaValidateValidWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"complete.yml": `name: Complete Workflow
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -126,7 +124,6 @@ steps:
 func TestSchemaValidateMultipleWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"workflow-a.yml": `name: Workflow A
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -135,7 +132,6 @@ steps:
     run: echo "A"
 `,
 		"workflow-b.yml": `name: Workflow B
-lifecycle: pre
 on:
   file:
     paths: ['**/*.go']
@@ -144,7 +140,6 @@ steps:
     run: echo "B"
 `,
 		"workflow-c.yml": `name: Workflow C
-lifecycle: pre
 on:
   hooks:
     types: [preToolUse]
@@ -165,7 +160,6 @@ steps:
 func TestSchemaValidatePushTrigger(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-workflow.yml": `name: Push Checks
-lifecycle: pre
 on:
   push:
     branches: [main, develop]
@@ -187,7 +181,6 @@ steps:
 func TestDiscoverFindsMultipleTypes(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"alpha.yml": `name: Alpha
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -196,7 +189,6 @@ steps:
     run: echo "a"
 `,
 		"beta.yaml": `name: Beta
-lifecycle: pre
 on:
   hooks:
 steps:
@@ -204,7 +196,6 @@ steps:
     run: echo "b"
 `,
 		"gamma.yml": `name: Gamma
-lifecycle: pre
 on:
   git_commit:
 steps:

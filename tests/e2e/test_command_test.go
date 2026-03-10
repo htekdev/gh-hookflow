@@ -12,7 +12,6 @@ import (
 func TestTestCommandFileCreate(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"file-check.yml": `name: File Check
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -30,14 +29,18 @@ steps:
 		"--action", "create",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	t.Logf("test file output: %s", output)
+	if err != nil {
+		t.Fatalf("test command failed: %v\noutput: %s", err, output)
+	}
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "file check") && !strings.Contains(lower, "check") {
+		t.Errorf("expected output to reference the matching workflow, got: %s", output)
+	}
 }
 
 func TestTestCommandCommitMsg(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-lint.yml": `name: Commit Lint
-lifecycle: pre
 on:
   commit:
 steps:
@@ -53,14 +56,14 @@ steps:
 		"--branch", "main",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	t.Logf("test commit output: %s", output)
+	if err != nil {
+		t.Fatalf("test command failed: %v\noutput: %s", err, output)
+	}
 }
 
 func TestTestCommandPushBranch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"push-check.yml": `name: Push Check
-lifecycle: pre
 on:
   push:
     branches: [main]
@@ -76,14 +79,14 @@ steps:
 		"--branch", "main",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	t.Logf("test push output: %s", output)
+	if err != nil {
+		t.Fatalf("test command failed: %v\noutput: %s", err, output)
+	}
 }
 
 func TestTestCommandMissingEvent(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"dummy.yml": `name: Dummy
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -102,7 +105,6 @@ steps:
 func TestTestCommandSpecificWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"target.yml": `name: Target
-lifecycle: pre
 on:
   file:
     paths: ['**/*.go']
@@ -111,7 +113,6 @@ steps:
     run: Write-Host "go check"
 `,
 		"other.yml": `name: Other
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -128,8 +129,16 @@ steps:
 		"--workflow", "target",
 		"--dir", workspace,
 	}, nil)
-	_ = err
-	t.Logf("test specific workflow output: %s", output)
+	if err != nil {
+		t.Fatalf("test command failed: %v\noutput: %s", err, output)
+	}
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "target") {
+		t.Errorf("expected output to reference 'Target' workflow, got: %s", output)
+	}
+	if strings.Contains(lower, "other") {
+		t.Errorf("expected output to NOT reference 'Other' workflow when --workflow filter is used, got: %s", output)
+	}
 }
 
 // ── hookflow init with --repo flag ──────────────────────────────────
@@ -140,13 +149,23 @@ func TestInitRepoFlag(t *testing.T) {
 
 	output, err := runHookflowCmd(t, []string{"init", "--dir", workspace, "--repo"}, nil)
 	if err != nil {
-		t.Logf("init --repo output: %s", output)
+		t.Fatalf("init --repo failed: %v\noutput: %s", err, output)
 	}
 
 	hookflowsDir := filepath.Join(workspace, ".github", "hookflows")
-	entries, _ := os.ReadDir(hookflowsDir)
-	if len(entries) > 0 {
-		t.Logf("Created %d hookflow files", len(entries))
+	info, statErr := os.Stat(hookflowsDir)
+	if statErr != nil {
+		t.Fatalf("hookflows directory was not created: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatalf("expected %s to be a directory", hookflowsDir)
+	}
+	entries, readErr := os.ReadDir(hookflowsDir)
+	if readErr != nil {
+		t.Fatalf("failed to read hookflows directory: %v", readErr)
+	}
+	if len(entries) == 0 {
+		t.Errorf("expected at least one hookflow file in %s, found none", hookflowsDir)
 	}
 }
 
@@ -155,9 +174,9 @@ func TestInitRepoFlag(t *testing.T) {
 func TestPostLifecycleWorkflow(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-validate.yml": `name: Post Validate
-lifecycle: post
 on:
   file:
+    lifecycle: post
     paths: ['**/*.json']
 steps:
   - name: Validate JSON

@@ -4,20 +4,11 @@ package schema
 type Workflow struct {
 	Name        string             `yaml:"name" json:"name"`
 	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
-	Lifecycle   string             `yaml:"lifecycle,omitempty" json:"lifecycle,omitempty"` // pre (default) or post
-	Blocking    *bool              `yaml:"blocking,omitempty" json:"blocking,omitempty"`   // Default: true
+	Blocking    *bool              `yaml:"blocking,omitempty" json:"blocking,omitempty"` // Default: true
 	Concurrency *ConcurrencyConfig `yaml:"concurrency,omitempty" json:"concurrency,omitempty"`
 	On          OnConfig           `yaml:"on" json:"on"`
 	Env         map[string]string  `yaml:"env,omitempty" json:"env,omitempty"`
 	Steps       []Step             `yaml:"steps" json:"steps"`
-}
-
-// GetLifecycle returns the workflow lifecycle (defaults to "pre")
-func (w *Workflow) GetLifecycle() string {
-	if w.Lifecycle == "" {
-		return "pre"
-	}
-	return w.Lifecycle
 }
 
 // IsBlocking returns whether the workflow should block on failure (default: true)
@@ -97,27 +88,54 @@ type ToolTrigger struct {
 
 // FileTrigger matches file create/edit events
 type FileTrigger struct {
+	Lifecycle   string   `yaml:"lifecycle,omitempty" json:"lifecycle,omitempty"`        // pre (default) or post
 	Types       []string `yaml:"types,omitempty" json:"types,omitempty"`               // create, edit, delete
 	Paths       []string `yaml:"paths,omitempty" json:"paths,omitempty"`               // Include patterns
 	PathsIgnore []string `yaml:"paths-ignore,omitempty" json:"paths-ignore,omitempty"` // Exclude patterns
 }
 
+// GetLifecycle returns the trigger lifecycle (defaults to "pre")
+func (f *FileTrigger) GetLifecycle() string {
+	if f == nil || f.Lifecycle == "" {
+		return "pre"
+	}
+	return f.Lifecycle
+}
+
 // CommitTrigger matches git commit events
 type CommitTrigger struct {
+	Lifecycle      string   `yaml:"lifecycle,omitempty" json:"lifecycle,omitempty"` // pre (default) or post
 	Paths          []string `yaml:"paths,omitempty" json:"paths,omitempty"`
 	PathsIgnore    []string `yaml:"paths-ignore,omitempty" json:"paths-ignore,omitempty"`
 	Branches       []string `yaml:"branches,omitempty" json:"branches,omitempty"`
 	BranchesIgnore []string `yaml:"branches-ignore,omitempty" json:"branches-ignore,omitempty"`
 }
 
+// GetLifecycle returns the trigger lifecycle (defaults to "pre")
+func (c *CommitTrigger) GetLifecycle() string {
+	if c == nil || c.Lifecycle == "" {
+		return "pre"
+	}
+	return c.Lifecycle
+}
+
 // PushTrigger matches git push events
 type PushTrigger struct {
+	Lifecycle      string   `yaml:"lifecycle,omitempty" json:"lifecycle,omitempty"` // pre (default) or post
 	Paths          []string `yaml:"paths,omitempty" json:"paths,omitempty"`
 	PathsIgnore    []string `yaml:"paths-ignore,omitempty" json:"paths-ignore,omitempty"`
 	Branches       []string `yaml:"branches,omitempty" json:"branches,omitempty"`
 	BranchesIgnore []string `yaml:"branches-ignore,omitempty" json:"branches-ignore,omitempty"`
 	Tags           []string `yaml:"tags,omitempty" json:"tags,omitempty"`
 	TagsIgnore     []string `yaml:"tags-ignore,omitempty" json:"tags-ignore,omitempty"`
+}
+
+// GetLifecycle returns the trigger lifecycle (defaults to "pre")
+func (p *PushTrigger) GetLifecycle() string {
+	if p == nil || p.Lifecycle == "" {
+		return "pre"
+	}
+	return p.Lifecycle
 }
 
 // Step represents a single step in a workflow

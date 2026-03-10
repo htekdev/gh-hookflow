@@ -11,7 +11,6 @@ import (
 func TestBuiltinFromJSONObject(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-obj.yml": `name: FromJSON Object
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -36,7 +35,6 @@ steps:
 func TestBuiltinFromJSONArrayIndex(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-arr.yml": `name: FromJSON Array
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -64,7 +62,6 @@ steps:
 func TestBuiltinFromJSONMapIndex(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-map-idx.yml": `name: FromJSON Map Index
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -89,7 +86,6 @@ steps:
 func TestBuiltinFromJSONNested(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-nested.yml": `name: FromJSON Nested
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -114,7 +110,6 @@ steps:
 func TestBuiltinJoinWithSeparator(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"join-sep.yml": `name: Join With Sep
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -139,7 +134,6 @@ steps:
 func TestBuiltinJoinDefaultSeparator(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"join-default.yml": `name: Join Default
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -164,7 +158,6 @@ steps:
 func TestBuiltinContainsArrayFound(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"contains-arr.yml": `name: Contains Array
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -189,7 +182,6 @@ steps:
 func TestBuiltinContainsArrayNotFound(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"contains-notfound.yml": `name: Contains Not Found
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -218,7 +210,6 @@ steps:
 func TestBuiltinBoolCoercion(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"bool-coerce.yml": `name: Bool Coercion
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -255,7 +246,6 @@ steps:
 func TestBuiltinNumericCoercion(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"numeric-coerce.yml": `name: Numeric Coercion
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -295,7 +285,6 @@ steps:
 func TestBuiltinNullComparison(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"null-compare.yml": `name: Null Compare
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -323,7 +312,6 @@ steps:
 func TestBuiltinParenGrouping(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"paren-group.yml": `name: Paren Grouping
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -351,7 +339,6 @@ steps:
 func TestBuiltinToStringBranches(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tostring-branches.yml": `name: ToString Branches
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -385,7 +372,6 @@ steps:
 func TestBuiltinJoinNonArrayFallback(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"join-nonarray.yml": `name: Join Non-Array
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -410,7 +396,6 @@ steps:
 func TestBuiltinFromJSONNull(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"fromjson-null.yml": `name: FromJSON Null
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -438,7 +423,6 @@ steps:
 func TestBuiltinContainsNonStringNonArray(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"contains-default.yml": `name: Contains Default
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -463,7 +447,6 @@ steps:
 func TestExprToJSONWithNumber(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"tojson-num.yml": `name: ToJSON Number
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -488,7 +471,6 @@ steps:
 func TestExprInequality(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"inequality.yml": `name: Inequality
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -516,7 +498,6 @@ steps:
 func TestExprStepOutputInCondition(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"step-ref.yml": `name: Step Reference
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]
@@ -544,7 +525,6 @@ steps:
 func TestExprStringInterpolation(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"interpolation.yml": `name: String Interpolation
-lifecycle: pre
 on:
   file:
     paths: ["**/*"]

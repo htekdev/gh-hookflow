@@ -24,13 +24,7 @@ func (m *Matcher) Match(event *schema.Event) bool {
 	on := m.workflow.On
 	workflowName := m.workflow.Name
 
-	// Check lifecycle first — workflow lifecycle must match event lifecycle
-	if m.workflow.GetLifecycle() != event.GetLifecycle() {
-		log.Debug("[%s] lifecycle mismatch: workflow=%s, event=%s", workflowName, m.workflow.GetLifecycle(), event.GetLifecycle())
-		return false
-	}
-
-	// Check tool trigger (most specific)
+	// Check tool trigger (most specific) — tool/hooks triggers match any lifecycle
 	if on.Tool != nil && event.Tool != nil {
 		log.Debug("[%s] checking tool trigger for tool=%s", workflowName, event.Tool.Name)
 		if m.matchToolTrigger(on.Tool, event.Tool) {
@@ -50,7 +44,7 @@ func (m *Matcher) Match(event *schema.Event) bool {
 		}
 	}
 
-	// Check hooks trigger
+	// Check hooks trigger — hooks use types (preToolUse/postToolUse) for lifecycle
 	if on.Hooks != nil && event.Hook != nil {
 		log.Debug("[%s] checking hooks trigger", workflowName)
 		if m.matchHooksTrigger(on.Hooks, event.Hook) {
@@ -59,30 +53,42 @@ func (m *Matcher) Match(event *schema.Event) bool {
 		}
 	}
 
-	// Check file trigger
+	// Check file trigger — lifecycle is on the trigger
 	if on.File != nil && event.File != nil {
-		log.Debug("[%s] checking file trigger for path=%s", workflowName, event.File.Path)
-		if m.matchFileTrigger(on.File, event.File) {
-			log.Debug("[%s] file trigger matched", workflowName)
-			return true
+		if on.File.GetLifecycle() != event.GetLifecycle() {
+			log.Debug("[%s] file trigger lifecycle mismatch: trigger=%s, event=%s", workflowName, on.File.GetLifecycle(), event.GetLifecycle())
+		} else {
+			log.Debug("[%s] checking file trigger for path=%s", workflowName, event.File.Path)
+			if m.matchFileTrigger(on.File, event.File) {
+				log.Debug("[%s] file trigger matched", workflowName)
+				return true
+			}
 		}
 	}
 
-	// Check commit trigger
+	// Check commit trigger — lifecycle is on the trigger
 	if on.Commit != nil && event.Commit != nil {
-		log.Debug("[%s] checking commit trigger", workflowName)
-		if m.matchCommitTrigger(on.Commit, event.Commit) {
-			log.Debug("[%s] commit trigger matched", workflowName)
-			return true
+		if on.Commit.GetLifecycle() != event.GetLifecycle() {
+			log.Debug("[%s] commit trigger lifecycle mismatch: trigger=%s, event=%s", workflowName, on.Commit.GetLifecycle(), event.GetLifecycle())
+		} else {
+			log.Debug("[%s] checking commit trigger", workflowName)
+			if m.matchCommitTrigger(on.Commit, event.Commit) {
+				log.Debug("[%s] commit trigger matched", workflowName)
+				return true
+			}
 		}
 	}
 
-	// Check push trigger
+	// Check push trigger — lifecycle is on the trigger
 	if on.Push != nil && event.Push != nil {
-		log.Debug("[%s] checking push trigger", workflowName)
-		if m.matchPushTrigger(on.Push, event.Push) {
-			log.Debug("[%s] push trigger matched", workflowName)
-			return true
+		if on.Push.GetLifecycle() != event.GetLifecycle() {
+			log.Debug("[%s] push trigger lifecycle mismatch: trigger=%s, event=%s", workflowName, on.Push.GetLifecycle(), event.GetLifecycle())
+		} else {
+			log.Debug("[%s] checking push trigger", workflowName)
+			if m.matchPushTrigger(on.Push, event.Push) {
+				log.Debug("[%s] push trigger matched", workflowName)
+				return true
+			}
 		}
 	}
 

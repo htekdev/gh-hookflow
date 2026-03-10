@@ -11,7 +11,6 @@ import (
 func TestCommitTriggerPathsMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-paths.yml": `name: Commit Paths
-lifecycle: pre
 on:
   commit:
     paths:
@@ -41,7 +40,6 @@ steps:
 func TestCommitTriggerPathsNoMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-src-only.yml": `name: Commit Src Only
-lifecycle: pre
 on:
   commit:
     paths:
@@ -66,7 +64,6 @@ steps:
 func TestCommitTriggerPathsIgnore(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-ignore.yml": `name: Commit Paths Ignore
-lifecycle: pre
 on:
   commit:
     paths-ignore:
@@ -92,7 +89,6 @@ steps:
 func TestCommitTriggerPathsIgnorePartialMatch(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-ignore-partial.yml": `name: Commit Ignore Partial
-lifecycle: pre
 on:
   commit:
     paths-ignore:
@@ -121,7 +117,6 @@ steps:
 func TestCommitTriggerBareCommit(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"commit-bare.yml": `name: Bare Commit
-lifecycle: pre
 on:
   commit:
 blocking: true
@@ -144,7 +139,6 @@ steps:
 func TestCommitTriggerConventionalMessage(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"conventional.yml": `name: Conventional Commit
-lifecycle: pre
 on:
   commit:
 blocking: true
@@ -172,7 +166,6 @@ steps:
 func TestCommitTriggerBadMessage(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"conv-check.yml": `name: Conv Check
-lifecycle: pre
 on:
   commit:
 blocking: true

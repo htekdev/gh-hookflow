@@ -12,7 +12,6 @@ import (
 func TestCompositeActionLocal(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"use-action.yml": `name: Use Local Action
-lifecycle: pre
 on:
   file:
     paths: ['**/*.ts']
@@ -65,7 +64,6 @@ runs:
 func TestCompositeActionLocalMultiStep(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"multi-action.yml": `name: Multi Step Action
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -110,7 +108,6 @@ runs:
 func TestCompositeActionWithInputs(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"input-action.yml": `name: Action With Inputs
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -162,7 +159,6 @@ runs:
 func TestCompositeActionNotFound(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"missing-action.yml": `name: Missing Action
-lifecycle: pre
 on:
   file:
     paths: ['**/*']
@@ -179,8 +175,9 @@ steps:
 	}, workspace)
 	result, output := runHookflow(t, workspace, eventJSON, "preToolUse", nil)
 	// Should fail because action directory doesn't exist
-	_ = result
-	_ = output
+	if result.PermissionDecision != "deny" && !strings.Contains(strings.ToLower(output), "not found") && !strings.Contains(strings.ToLower(output), "nonexistent") {
+		t.Errorf("Expected deny or error about missing action, got decision=%q output=%s", result.PermissionDecision, output)
+	}
 }
 
 // ── shell action ────────────────────────────────────────────────────
@@ -188,7 +185,6 @@ steps:
 func TestCompositeActionShellType(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"shell-action.yml": `name: Shell Action
-lifecycle: pre
 on:
   file:
     paths: ['**/*']

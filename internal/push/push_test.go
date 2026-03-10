@@ -161,9 +161,9 @@ func TestRunPushWorkflowsWithMatchingWorkflow(t *testing.T) {
 	}
 
 	workflowContent := `name: pre-push-lint
-lifecycle: pre
 on:
   push:
+    lifecycle: pre
 steps:
   - name: Lint check
     run: echo "all good"
@@ -208,9 +208,9 @@ func TestRunPushWorkflowsWithFailingWorkflow(t *testing.T) {
 	}
 
 	workflowContent := `name: pre-push-check
-lifecycle: pre
 on:
   push:
+    lifecycle: pre
 steps:
   - name: Failing check
     run: exit 1
