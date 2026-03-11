@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestContextEvaluate(t *testing.T) {
@@ -118,10 +120,11 @@ func TestContextEvaluate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
 			}
@@ -161,10 +164,11 @@ func TestContextEvaluateString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.EvaluateString(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EvaluateString() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("EvaluateString() = %q, want %q", got, tt.want)
 			}
@@ -191,10 +195,11 @@ func TestContextEvaluateBool(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.EvaluateBool(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EvaluateBool() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("EvaluateBool() = %v, want %v", got, tt.want)
 			}
@@ -245,10 +250,11 @@ func TestBuiltinContains(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinContains(tt.search, tt.item)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("builtinContains() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinContains() = %v, want %v", got, tt.want)
 			}
@@ -258,22 +264,20 @@ func TestBuiltinContains(t *testing.T) {
 
 func TestBuiltinStartsWith(t *testing.T) {
 	tests := []struct {
+		name   string
 		str    string
 		prefix string
 		want   bool
 	}{
-		{"Hello World", "Hello", true},
-		{"Hello World", "World", false},
-		{"Hello World", "hello", true}, // case insensitive
+		{"starts with prefix", "Hello World", "Hello", true},
+		{"does not start with suffix", "Hello World", "World", false},
+		{"case insensitive", "Hello World", "hello", true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.str+"_"+tt.prefix, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinStartsWith(tt.str, tt.prefix)
-			if err != nil {
-				t.Errorf("builtinStartsWith() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinStartsWith() = %v, want %v", got, tt.want)
 			}
@@ -283,22 +287,20 @@ func TestBuiltinStartsWith(t *testing.T) {
 
 func TestBuiltinEndsWith(t *testing.T) {
 	tests := []struct {
+		name   string
 		str    string
 		suffix string
 		want   bool
 	}{
-		{"Hello World", "World", true},
-		{"Hello World", "Hello", false},
-		{"test.js", ".js", true},
+		{"ends with suffix", "Hello World", "World", true},
+		{"does not end with prefix", "Hello World", "Hello", false},
+		{"ends with extension", "test.js", ".js", true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.str+"_"+tt.suffix, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinEndsWith(tt.str, tt.suffix)
-			if err != nil {
-				t.Errorf("builtinEndsWith() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinEndsWith() = %v, want %v", got, tt.want)
 			}
@@ -327,10 +329,7 @@ func TestBuiltinFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinFormat(tt.args...)
-			if err != nil {
-				t.Errorf("builtinFormat() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinFormat() = %v, want %v", got, tt.want)
 			}
@@ -368,10 +367,7 @@ func TestBuiltinJoin(t *testing.T) {
 			} else {
 				got, err = builtinJoin(tt.arr, tt.sep)
 			}
-			if err != nil {
-				t.Errorf("builtinJoin() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinJoin() = %v, want %v", got, tt.want)
 			}
@@ -380,28 +376,64 @@ func TestBuiltinJoin(t *testing.T) {
 }
 
 func TestBuiltinToJSON(t *testing.T) {
-	got, err := builtinToJSON(map[string]interface{}{"key": "value"})
-	if err != nil {
-		t.Errorf("builtinToJSON() error = %v", err)
-		return
+	tests := []struct {
+		name    string
+		input   interface{}
+		want    string
+		wantErr bool
+	}{
+		{
+			name:  "simple map",
+			input: map[string]interface{}{"key": "value"},
+			want:  `{"key":"value"}`,
+		},
+		{
+			name:    "channel cannot be marshaled",
+			input:   make(chan int),
+			wantErr: true,
+		},
+		{
+			name:  "nil value",
+			input: nil,
+			want:  "null",
+		},
+		{
+			name:  "array",
+			input: []interface{}{"a", "b"},
+			want:  `["a","b"]`,
+		},
+		{
+			name:  "number",
+			input: float64(42),
+			want:  "42",
+		},
+		{
+			name:  "bool",
+			input: true,
+			want:  "true",
+		},
 	}
-	// JSON may have different spacing, just check it's valid
-	if got != `{"key":"value"}` {
-		t.Errorf("builtinToJSON() = %v", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := builtinToJSON(tt.input)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			if got != tt.want {
+				t.Errorf("builtinToJSON() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestBuiltinFromJSON(t *testing.T) {
 	got, err := builtinFromJSON(`{"key":"value"}`)
-	if err != nil {
-		t.Errorf("builtinFromJSON() error = %v", err)
-		return
-	}
-	m, ok := got.(map[string]interface{})
-	if !ok {
-		t.Errorf("builtinFromJSON() returned %T, want map", got)
-		return
-	}
+	require.NoError(t, err)
+	require.IsType(t, map[string]interface{}{}, got)
+	m := got.(map[string]interface{})
 	if m["key"] != "value" {
 		t.Errorf("builtinFromJSON() key = %v, want 'value'", m["key"])
 	}
@@ -449,10 +481,11 @@ func TestFunctionCallInContext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -498,10 +531,7 @@ func TestComparisonOperators(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -548,10 +578,11 @@ func TestIndexAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
 			}
@@ -583,10 +614,7 @@ func TestPropertyAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -706,10 +734,7 @@ func TestStepContextFunctions(t *testing.T) {
 			ctx := NewContext()
 			ctx.Steps = tt.steps
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -744,10 +769,7 @@ func TestStepsPropertyAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -790,10 +812,7 @@ func TestNestedFunctionCalls(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -834,22 +853,21 @@ func TestFromJSONToJSONComplex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonStr, err := builtinToJSON(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("builtinToJSON() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
-			if err != nil {
-				return
-			}
+			require.NoError(t, err)
 			// Round-trip test
 			result, err := builtinFromJSON(jsonStr)
-			if err != nil {
-				t.Errorf("builtinFromJSON() error = %v", err)
-				return
-			}
-			// Just verify it parses back
-			if result == nil && tt.input != nil {
-				t.Errorf("round-trip failed: got nil")
+			require.NoError(t, err)
+			// Normalize both through JSON for content equality comparison
+			wantBytes, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+			gotBytes, err := json.Marshal(result)
+			require.NoError(t, err)
+			if string(gotBytes) != string(wantBytes) {
+				t.Errorf("round-trip content mismatch:\n  got  %s\n  want %s", gotBytes, wantBytes)
 			}
 		})
 	}
@@ -872,9 +890,11 @@ func TestFromJSONErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := builtinFromJSON(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("builtinFromJSON() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -936,15 +956,14 @@ func TestExpressionErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if err != nil && tt.errMsg != "" {
-				if !strings.Contains(err.Error(), tt.errMsg) {
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("error message = %q, want to contain %q", err.Error(), tt.errMsg)
 				}
+				return
 			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -979,14 +998,10 @@ func TestBooleanCoercion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
-			got := toBool(result)
+			got, err := ctx.EvaluateBool(tt.expr)
+			require.NoError(t, err)
 			if got != tt.want {
-				t.Errorf("toBool(%v) = %v, want %v", result, got, tt.want)
+				t.Errorf("EvaluateBool(%q) = %v, want %v", tt.expr, got, tt.want)
 			}
 		})
 	}
@@ -1012,10 +1027,7 @@ func TestNumberParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v (%T), want %v (%T)", got, got, tt.want, tt.want)
 			}
@@ -1046,10 +1058,7 @@ func TestBracketNotationPropertyAccess(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -1079,10 +1088,7 @@ func TestParenthesizedExpressions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -1112,10 +1118,11 @@ func TestEvaluateBoolWithExpressionSyntax(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.EvaluateBool(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EvaluateBool() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("EvaluateBool() = %v, want %v", got, tt.want)
 			}
@@ -1210,6 +1217,85 @@ func TestToBoolConversions(t *testing.T) {
 	}
 }
 
+func TestIsNumeric(t *testing.T) {
+	tests := []struct {
+		name  string
+		input interface{}
+		want  bool
+	}{
+		{"int", int(42), true},
+		{"int64", int64(42), true},
+		{"float64", float64(3.14), true},
+		{"string", "42", false},
+		{"bool", true, false},
+		{"nil", nil, false},
+		{"slice", []interface{}{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isNumeric(tt.input)
+			if got != tt.want {
+				t.Errorf("isNumeric(%v) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWrapLinesAsJSONArray(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{"nil input", nil, "[]"},
+		{"empty slice", []string{}, "[]"},
+		{"single entry", []string{`{"a":1}`}, `[{"a":1}]`},
+		{"multiple entries", []string{`{"a":1}`, `{"b":2}`}, `[{"a":1},{"b":2}]`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wrapLinesAsJSONArray(tt.lines)
+			if got != tt.want {
+				t.Errorf("wrapLinesAsJSONArray() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadSessionTranscriptRaw(t *testing.T) {
+	t.Run("empty session dir returns nil", func(t *testing.T) {
+		ctx := NewContext()
+		lines, err := readSessionTranscriptRaw(ctx)
+		require.NoError(t, err)
+		if lines != nil {
+			t.Errorf("expected nil lines for empty session dir, got %v", lines)
+		}
+	})
+
+	t.Run("non-existent dir returns nil", func(t *testing.T) {
+		ctx := NewContext()
+		ctx.SessionDir = "/nonexistent/path/that/does/not/exist"
+		lines, err := readSessionTranscriptRaw(ctx)
+		require.NoError(t, err)
+		if lines != nil {
+			t.Errorf("expected nil lines for missing transcript, got %v", lines)
+		}
+	})
+
+	t.Run("reads lines from transcript file", func(t *testing.T) {
+		dir := setupTranscriptTestDir(t)
+		ctx := NewContext()
+		ctx.SessionDir = dir
+		lines, err := readSessionTranscriptRaw(ctx)
+		require.NoError(t, err)
+		if len(lines) != 7 {
+			t.Errorf("expected 7 lines, got %d", len(lines))
+		}
+	})
+}
+
 // TestContainsEdgeCases tests contains with edge cases
 func TestContainsEdgeCases(t *testing.T) {
 	tests := []struct {
@@ -1226,10 +1312,11 @@ func TestContainsEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinContains(tt.search, tt.item)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("builtinContains() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinContains() = %v, want %v", got, tt.want)
 			}
@@ -1237,8 +1324,8 @@ func TestContainsEdgeCases(t *testing.T) {
 	}
 }
 
-// TestJoinEdgeCases tests join with edge cases
-func TestJoinEdgeCases(t *testing.T) {
+// TestBuiltinJoinEdgeCases tests join with edge cases and error conditions
+func TestBuiltinJoinEdgeCases(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []interface{}
@@ -1246,26 +1333,35 @@ func TestJoinEdgeCases(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "non-array input",
-			args:    []interface{}{"not an array"},
-			want:    "not an array",
-			wantErr: false,
+			name: "non-array input",
+			args: []interface{}{"not an array"},
+			want: "not an array",
 		},
 		{
-			name:    "empty array",
-			args:    []interface{}{[]interface{}{}},
-			want:    "",
-			wantErr: false,
+			name: "empty array",
+			args: []interface{}{[]interface{}{}},
+			want: "",
+		},
+		{
+			name:    "no arguments",
+			args:    []interface{}{},
+			wantErr: true,
+		},
+		{
+			name:    "too many arguments",
+			args:    []interface{}{[]interface{}{"a"}, ",", "extra"},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := builtinJoin(tt.args...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("builtinJoin() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
 				return
 			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("builtinJoin() = %v, want %v", got, tt.want)
 			}
@@ -1289,9 +1385,11 @@ func TestEvaluateStringErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ctx.EvaluateString(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EvaluateString() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -1328,15 +1426,14 @@ func TestParseCallErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if err != nil && tt.errMsg != "" {
-				if !strings.Contains(err.Error(), tt.errMsg) {
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("error = %q, want to contain %q", err.Error(), tt.errMsg)
 				}
+				return
 			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -1359,10 +1456,7 @@ func TestGetIndexOnUnsupportedTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -1396,10 +1490,7 @@ func TestGetPropertyWithReflection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -1423,29 +1514,12 @@ func TestEvaluateErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ctx.Evaluate(tt.expr)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Evaluate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
 			}
+			require.NoError(t, err)
 		})
-	}
-}
-
-// TestToJSONError tests toJSON with values that might fail
-func TestToJSONError(t *testing.T) {
-	// Channel cannot be marshaled to JSON
-	ch := make(chan int)
-	_, err := builtinToJSON(ch)
-	if err == nil {
-		t.Error("builtinToJSON(channel) expected error, got nil")
-	}
-}
-
-// TestJoinErrorCases tests join with invalid argument counts
-func TestJoinErrorCases(t *testing.T) {
-	// No arguments
-	_, err := builtinJoin()
-	if err == nil {
-		t.Error("builtinJoin() expected error with no arguments")
 	}
 }
 
@@ -1467,10 +1541,7 @@ func TestParseOrAndShortCircuit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
@@ -1497,10 +1568,7 @@ func TestInequalityOperator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ctx.Evaluate(tt.expr)
-			if err != nil {
-				t.Errorf("Evaluate() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 			if got != tt.want {
 				t.Errorf("Evaluate() = %v, want %v", got, tt.want)
 			}
