@@ -3,6 +3,7 @@ package discover
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -376,7 +377,12 @@ func TestDiscoverNonStandardExtensions(t *testing.T) {
 	}
 
 	for f := range files {
-		if err := os.WriteFile(filepath.Join(workflowDir, f), []byte("content"), 0644); err != nil {
+		content := "content"
+		// .md files need YAML frontmatter to be recognized as hookify rules
+		if strings.ToLower(filepath.Ext(f)) == ".md" {
+			content = "---\nname: test\nevent: file\naction: warn\n---\nTest rule"
+		}
+		if err := os.WriteFile(filepath.Join(workflowDir, f), []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -674,5 +680,87 @@ func TestWorkflowFileNameExtraction(t *testing.T) {
 		if !discovered[expected] {
 			t.Errorf("Expected workflow name %q not found", expected)
 		}
+	}
+}
+
+func TestDiscoverSkipsMdWithoutFrontmatter(t *testing.T) {
+	tmpDir := t.TempDir()
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid YAML workflow
+	if err := os.WriteFile(filepath.Join(workflowDir, "lint.yml"), []byte("name: lint"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a plain markdown file (no YAML frontmatter) — should be skipped
+	if err := os.WriteFile(filepath.Join(workflowDir, "README.md"), []byte("# Notes\nThis is not a workflow."), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a valid hookify markdown file (with YAML frontmatter) — should be found
+	hookifyContent := "---\nname: block-secrets\nevent: file\naction: block\n---\nDo not commit secrets."
+	if err := os.WriteFile(filepath.Join(workflowDir, "block-secrets.md"), []byte(hookifyContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflows, err := Discover(tmpDir)
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+
+	if len(workflows) != 2 {
+		t.Errorf("Discover() found %d workflows, want 2 (lint.yml + block-secrets.md)", len(workflows))
+		for _, w := range workflows {
+			t.Logf("  found: %s (%s)", w.Name, w.RelPath)
+		}
+	}
+
+	names := make(map[string]bool)
+	for _, w := range workflows {
+		names[w.Name] = true
+	}
+
+	if !names["lint"] {
+		t.Error("Expected to find 'lint' workflow")
+	}
+	if !names["block-secrets"] {
+		t.Error("Expected to find 'block-secrets' hookify workflow")
+	}
+	if names["README"] {
+		t.Error("README.md should not be discovered as a workflow")
+	}
+}
+
+func TestDiscoverByGlobSkipsMdWithoutFrontmatter(t *testing.T) {
+	tmpDir := t.TempDir()
+	workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Plain markdown — no frontmatter
+	if err := os.WriteFile(filepath.Join(workflowDir, "notes.md"), []byte("# Notes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Valid hookify markdown
+	hookifyContent := "---\nname: test-rule\nevent: bash\naction: warn\n---\nWarning message."
+	if err := os.WriteFile(filepath.Join(workflowDir, "test-rule.md"), []byte(hookifyContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	workflows, err := DiscoverByGlob(tmpDir, "*.md")
+	if err != nil {
+		t.Fatalf("DiscoverByGlob() error = %v", err)
+	}
+
+	if len(workflows) != 1 {
+		t.Errorf("DiscoverByGlob(*.md) found %d workflows, want 1", len(workflows))
+	}
+	if len(workflows) > 0 && workflows[0].Name != "test-rule" {
+		t.Errorf("Expected 'test-rule', got %q", workflows[0].Name)
 	}
 }
