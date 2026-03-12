@@ -837,6 +837,7 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 
 	// Aggregate results — deny wins across both hookify and YAML workflows
 	var finalResult *schema.WorkflowResult
+	var warnReasons []string
 
 	// Check hookify results first (already evaluated — pure Go, no shell)
 	for _, result := range hookifyResults {
@@ -845,6 +846,9 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 			return outputWorkflowResult(result)
 		}
 		log.Debug("hookify rule allowed/warned")
+		if result.PermissionDecisionReason != "" {
+			warnReasons = append(warnReasons, result.PermissionDecisionReason)
+		}
 		finalResult = result
 	}
 
@@ -865,12 +869,20 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 			}
 
 			log.Debug("workflow %s allowed", wf.Name)
+			if result.PermissionDecisionReason != "" {
+				warnReasons = append(warnReasons, result.PermissionDecisionReason)
+			}
 			finalResult = result
 		}
 	}
 
 	if finalResult == nil {
 		finalResult = schema.NewAllowResult()
+	}
+
+	// Concatenate all warn reasons so no advisory feedback is lost
+	if len(warnReasons) > 1 && finalResult != nil {
+		finalResult.PermissionDecisionReason = strings.Join(warnReasons, "\n")
 	}
 
 	return outputWorkflowResult(finalResult)
@@ -978,11 +990,15 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	
 	// Aggregate results — deny wins
 	var finalResult *schema.WorkflowResult
+	var warnReasons []string
 
 	// Check hookify results first (already evaluated)
 	for _, result := range hookifyResults {
 		if result.PermissionDecision == "deny" {
 			return outputWorkflowResult(result)
+		}
+		if result.PermissionDecisionReason != "" {
+			warnReasons = append(warnReasons, result.PermissionDecisionReason)
 		}
 		finalResult = result
 	}
@@ -996,6 +1012,9 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 			if result.PermissionDecision == "deny" {
 				return outputWorkflowResult(result)
 			}
+			if result.PermissionDecisionReason != "" {
+				warnReasons = append(warnReasons, result.PermissionDecisionReason)
+			}
 			finalResult = result
 		}
 	}
@@ -1003,7 +1022,12 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	if finalResult == nil {
 		finalResult = schema.NewAllowResult()
 	}
-	
+
+	// Concatenate all warn reasons so no advisory feedback is lost
+	if len(warnReasons) > 1 && finalResult != nil {
+		finalResult.PermissionDecisionReason = strings.Join(warnReasons, "\n")
+	}
+
 	return outputWorkflowResult(finalResult)
 }
 

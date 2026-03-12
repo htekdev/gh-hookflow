@@ -123,6 +123,11 @@ func validateRule(rule *Rule) error {
 		if cond.Pattern == "" {
 			return fmt.Errorf("hookify rule %q condition[%d] missing required field: pattern", rule.Name, i)
 		}
+		// content field concatenates map values in non-deterministic order;
+		// only order-independent operators are safe.
+		if cond.Field == FieldContent && contentPositionalOperators[cond.Operator] {
+			return fmt.Errorf("hookify rule %q condition[%d]: operator %q is not supported with field %q (map iteration order is non-deterministic; use contains, not_contains, or regex_match instead)", rule.Name, i, cond.Operator, cond.Field)
+		}
 	}
 
 	return nil

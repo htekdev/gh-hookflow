@@ -124,6 +124,15 @@ var ValidFields = map[string]bool{
 	FieldTranscript: true,
 }
 
+// contentPositionalOperators are operators that depend on string position and
+// are therefore unsafe to use with the "content" field, whose value is built
+// from map iteration (non-deterministic order).
+var contentPositionalOperators = map[string]bool{
+	OpEquals:     true,
+	OpStartsWith: true,
+	OpEndsWith:   true,
+}
+
 // BashToolNames are tool names that map to the "bash" hookify event type.
 var BashToolNames = map[string]bool{
 	"powershell": true,

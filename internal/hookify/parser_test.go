@@ -1,8 +1,10 @@
 package hookify
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -498,6 +500,79 @@ Msg.
 	_, err := ParseRuleFromBytes([]byte(input))
 	if err == nil {
 		t.Fatal("expected error for condition missing pattern")
+	}
+}
+
+func TestParseRuleFromBytes_ContentFieldRejectsPositionalOperators(t *testing.T) {
+	operators := []string{"equals", "starts_with", "ends_with"}
+	for _, op := range operators {
+		t.Run(op, func(t *testing.T) {
+			input := fmt.Sprintf(`---
+name: content-%s
+event: all
+conditions:
+  - field: content
+    operator: %s
+    pattern: test
+---
+
+Msg.
+`, op, op)
+			_, err := ParseRuleFromBytes([]byte(input))
+			if err == nil {
+				t.Fatalf("expected error for content field with operator %q, but got nil", op)
+			}
+			if !strings.Contains(err.Error(), "not supported with field") {
+				t.Errorf("expected 'not supported with field' error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseRuleFromBytes_ContentFieldAllowsSafeOperators(t *testing.T) {
+	operators := []string{"contains", "not_contains", "regex_match"}
+	for _, op := range operators {
+		t.Run(op, func(t *testing.T) {
+			input := fmt.Sprintf(`---
+name: content-%s
+event: all
+conditions:
+  - field: content
+    operator: %s
+    pattern: test
+---
+
+Msg.
+`, op, op)
+			_, err := ParseRuleFromBytes([]byte(input))
+			if err != nil {
+				t.Fatalf("unexpected error for content field with operator %q: %v", op, err)
+			}
+		})
+	}
+}
+
+func TestParseRuleFromBytes_NonContentFieldAllowsAllOperators(t *testing.T) {
+	// equals/starts_with/ends_with should be fine for non-content fields
+	operators := []string{"equals", "starts_with", "ends_with"}
+	for _, op := range operators {
+		t.Run(op, func(t *testing.T) {
+			input := fmt.Sprintf(`---
+name: filepath-%s
+event: file
+conditions:
+  - field: file_path
+    operator: %s
+    pattern: test.go
+---
+
+Msg.
+`, op, op)
+			_, err := ParseRuleFromBytes([]byte(input))
+			if err != nil {
+				t.Fatalf("unexpected error for file_path field with operator %q: %v", op, err)
+			}
+		})
 	}
 }
 
