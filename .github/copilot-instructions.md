@@ -87,6 +87,7 @@ hookflow/
 │   ├── discover/         # Workflow file discovery
 │   ├── event/            # Event detection from hook input
 │   ├── expression/       # ${{ }} expression engine
+│   ├── hookify/          # Hookify markdown rule parser, matcher, evaluator, and types
 │   ├── logging/          # Production logging service
 │   ├── mcp/              # MCP server infrastructure
 │   ├── runner/           # Step execution (records post-lifecycle errors via session.WriteError)
@@ -98,6 +99,18 @@ hookflow/
 └── testdata/
     └── e2e/hookflows/    # E2E test workflow files (copied to e2e-workspace/.github/hookflows/)
 ```
+
+### Hookify Format (`internal/hookify/`)
+
+Hookflow also supports **hookify-format** rules: markdown files with YAML frontmatter stored in `.github/hookflows/*.md`. They coexist with YAML workflows (`.yml` / `.yaml`), and `internal/discover/` now discovers all three extensions together.
+
+A hookify file parses into a `hookify.Rule`: frontmatter defines fields such as `name`, `description`, `enabled`, `event`, `action`, optional `pattern` or ANDed `conditions`, optional `tool_matcher`, and `lifecycle`; the markdown body becomes the user-facing message. Supported rule constants currently include events `bash`, `file`, and `all`; actions `block` and `warn`; lifecycles `pre` and `post`; and condition fields such as `command`, `file_path`, `new_text`, `old_text`, `content`, and `transcript`.
+
+Evaluation flow:
+1. `internal/hookify/parser.go` parses YAML frontmatter + markdown body and validates the rule.
+2. The runtime matches lifecycle first, then `internal/hookify/matcher.go` checks event and optional `tool_matcher` matching.
+3. `internal/hookify/evaluator.go` evaluates all conditions against event data and produces a `schema.WorkflowResult` when the rule fires.
+4. Hookify rules and YAML workflows are both evaluated for the same event; a deny from either one wins.
 
 ## Primitive Guards (Critical Safety)
 

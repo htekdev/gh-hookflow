@@ -324,6 +324,96 @@ env: object          # Environment variables
 concurrency: string   # Concurrency group name
 ` + "```" + `
 
+## Hookify Format
+
+Hookflow also supports **hookify-format** rules: markdown files with YAML frontmatter stored in ` + "`" + `.github/hookflows/*.md` + "`" + `. They complement YAML workflows in ` + "`" + `.github/hookflows/*.yml` + "`" + ` and ` + "`" + `.github/hookflows/*.yaml` + "`" + `.
+
+### Frontmatter Fields
+
+` + "```yaml" + `
+name: string                      # Rule name (required)
+enabled: boolean                  # Default: true
+event: bash|file|all|stop|prompt  # Match hookify event type
+action: block|warn                # Default: warn
+pattern: string                   # Simple regex shortcut
+conditions:                       # ANDed conditions (use instead of pattern)
+  - field: command|file_path|new_text|old_text|content|transcript
+    operator: regex_match|contains|equals|not_contains|starts_with|ends_with
+    pattern: string
+tool_matcher: string              # Optional regex for tool name
+lifecycle: pre|post               # Default: pre
+` + "```" + `
+
+The markdown body below the frontmatter is the message shown to the agent when the rule fires.
+
+### Pattern Modes
+
+- **Simple pattern mode:** use ` + "`" + `pattern` + "`" + ` by itself. For ` + "`" + `bash` + "`" + ` rules it matches ` + "`" + `command` + "`" + `; for ` + "`" + `file` + "`" + ` rules it matches ` + "`" + `file_path` + "`" + `.
+- **Multi-condition mode:** use ` + "`" + `conditions` + "`" + `. Every condition must match.
+- Use either ` + "`" + `pattern` + "`" + ` or ` + "`" + `conditions` + "`" + `, not both.
+
+### Hookify Examples
+
+#### Block Sensitive Files (simple pattern)
+
+` + "```md" + `
+---
+name: hookify-block-sensitive
+event: file
+action: block
+pattern: \.(env|key|pem|cert)$
+---
+
+⚠️ **Sensitive file blocked**
+
+Do not create or edit .env, .key, .pem, or .cert files.
+` + "```" + `
+
+#### Warn on console.log (multi-condition)
+
+` + "```md" + `
+---
+name: hookify-warn-console-log
+event: file
+action: warn
+conditions:
+  - field: file_path
+    operator: regex_match
+    pattern: \.(js|ts|jsx|tsx)$
+  - field: new_text
+    operator: contains
+    pattern: console.log
+---
+
+Avoid adding ` + "`" + `console.log` + "`" + ` statements in production code.
+` + "```" + `
+
+#### Block dangerous rm commands (multi-condition)
+
+` + "```md" + `
+---
+name: hookify-multi-condition
+event: bash
+action: block
+conditions:
+  - field: command
+    operator: contains
+    pattern: rm
+  - field: command
+    operator: regex_match
+    pattern: -r[f\s]|--recursive
+  - field: command
+    operator: regex_match
+    pattern: /\s*$|/[*]|\s/\s
+---
+
+Do not run ` + "`" + `rm -rf` + "`" + ` targeting root or wildcard paths.
+` + "```" + `
+
+### Hookify + YAML Together
+
+Hookify rules and YAML workflows are both evaluated for the same event. If either one denies the action, the deny wins.
+
 ## Trigger Types
 
 ### Lifecycle (pre vs post)
