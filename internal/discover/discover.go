@@ -39,9 +39,9 @@ func Discover(rootDir string) ([]WorkflowFile, error) {
 			return nil
 		}
 
-		// Only process .yml and .yaml files
+		// Only process .yml, .yaml, and .md files
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".yml" && ext != ".yaml" {
+		if ext != ".yml" && ext != ".yaml" && ext != ".md" {
 			return nil
 		}
 
@@ -87,7 +87,7 @@ func DiscoverByGlob(rootDir string, pattern string) ([]WorkflowFile, error) {
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".yml" && ext != ".yaml" {
+		if ext != ".yml" && ext != ".yaml" && ext != ".md" {
 			continue
 		}
 
@@ -110,7 +110,7 @@ func DiscoverByGlob(rootDir string, pattern string) ([]WorkflowFile, error) {
 
 // Exists checks if a specific workflow file exists
 func Exists(rootDir, workflowName string) (string, bool) {
-	for _, ext := range []string{".yml", ".yaml"} {
+	for _, ext := range []string{".yml", ".yaml", ".md"} {
 		path := filepath.Join(rootDir, WorkflowDir, workflowName+ext)
 		if _, err := os.Stat(path); err == nil {
 			return path, true

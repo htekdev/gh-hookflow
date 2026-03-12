@@ -24,7 +24,7 @@ func TestDiscover(t *testing.T) {
 	}
 
 	// Create a non-workflow file
-	if err := os.WriteFile(filepath.Join(workflowDir, "readme.md"), []byte("# readme"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(workflowDir, "readme.txt"), []byte("# readme"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -368,8 +368,10 @@ func TestDiscoverNonStandardExtensions(t *testing.T) {
 		"invalid.json":     false, // should be excluded
 		"invalid.YML":      true,  // should be found (case insensitive)
 		"invalid.YAML":     true,  // should be found (case insensitive)
+		"hookify.md":       true,  // should be found (hookify format)
+		"hookify-upper.MD": true,  // should be found (case insensitive)
 		"noextension":      false, // should be excluded
-		"readme.md":        false, // should be excluded
+		"readme.txt":       false, // should be excluded
 		"workflow.yml.bak": false, // should be excluded
 	}
 

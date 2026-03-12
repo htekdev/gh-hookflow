@@ -14,6 +14,7 @@ import (
 
 	"github.com/htekdev/gh-hookflow/internal/discover"
 	"github.com/htekdev/gh-hookflow/internal/event"
+	"github.com/htekdev/gh-hookflow/internal/hookify"
 	"github.com/htekdev/gh-hookflow/internal/logging"
 	"github.com/htekdev/gh-hookflow/internal/runner"
 	"github.com/htekdev/gh-hookflow/internal/schema"
@@ -746,8 +747,46 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 
 	// Load and validate ALL workflows first - fail fast on invalid workflows
 	var matchingWorkflows []*schema.Workflow
+	var hookifyResults []*schema.WorkflowResult
 	var validationErrors []string
+	sessionDir := os.Getenv("HOOKFLOW_SESSION_DIR")
+
 	for _, path := range workflowFiles {
+		ext := strings.ToLower(filepath.Ext(path))
+
+		// Hookify rules (.md files) — declarative, evaluated inline (no shell)
+		if ext == ".md" {
+			rule, err := hookify.ParseRule(path)
+			if err != nil {
+				relPath, _ := filepath.Rel(dir, path)
+				if relPath == "" {
+					relPath = path
+				}
+				log.Warn("hookify rule parse failed: %s: %v", relPath, err)
+				// Hookify parse errors are logged but do NOT trigger the validation gate
+				continue
+			}
+
+			// Check lifecycle match (pre/post)
+			if rule.GetLifecycle() != evt.GetLifecycle() {
+				log.Debug("hookify rule lifecycle mismatch: %s (rule=%s, event=%s)", rule.Name, rule.GetLifecycle(), evt.GetLifecycle())
+				continue
+			}
+
+			if !hookify.MatchEvent(rule, evt) {
+				log.Debug("hookify rule did not match: %s", rule.Name)
+				continue
+			}
+
+			log.Info("hookify rule matched: %s", rule.Name)
+			result := hookify.Evaluate(rule, evt, sessionDir)
+			if result != nil {
+				hookifyResults = append(hookifyResults, result)
+			}
+			continue
+		}
+
+		// YAML workflows (.yml/.yaml files)
 		wf, err := schema.LoadAndValidateWorkflow(path)
 		if err != nil {
 			// Collect validation errors instead of silently skipping
@@ -771,7 +810,7 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 		}
 	}
 
-	// If any workflows are invalid, check if agent is doing hookflow-related work
+	// If any YAML workflows are invalid, check if agent is doing hookflow-related work
 	if len(validationErrors) > 0 {
 		// Allow hookflow-related operations (except deletes) so agent can investigate and fix
 		if isHookflowRelatedWork(evt) {
@@ -789,37 +828,61 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 		return outputWorkflowResult(result)
 	}
 
-	if len(matchingWorkflows) == 0 {
-		// No matching workflows, allow by default
+	if len(matchingWorkflows) == 0 && len(hookifyResults) == 0 {
+		// No matching workflows or hookify rules, allow by default
 		log.Debug("no matching workflows, allowing")
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
 	}
 
-	log.Info("running %d matching workflows", len(matchingWorkflows))
-
-	// Run matching workflows
-	ctx := context.Background()
+	// Aggregate results — deny wins across both hookify and YAML workflows
 	var finalResult *schema.WorkflowResult
+	var warnReasons []string
 
-	for _, wf := range matchingWorkflows {
-		log.Debug("executing workflow: %s", wf.Name)
-		r := runner.NewRunner(wf, evt, dir, os.Getenv("HOOKFLOW_SESSION_DIR"))
-		result := r.RunWithBlocking(ctx)
-
-		// If any workflow denies, the final result is deny
+	// Check hookify results first (already evaluated — pure Go, no shell)
+	for _, result := range hookifyResults {
 		if result.PermissionDecision == "deny" {
-			log.Warn("workflow %s denied: %s", wf.Name, result.PermissionDecisionReason)
+			log.Warn("hookify rule denied: %s", result.PermissionDecisionReason)
 			return outputWorkflowResult(result)
 		}
-
-		log.Debug("workflow %s allowed", wf.Name)
-		// Keep the last allow result
+		log.Debug("hookify rule allowed/warned")
+		if result.PermissionDecisionReason != "" {
+			warnReasons = append(warnReasons, result.PermissionDecisionReason)
+		}
 		finalResult = result
+	}
+
+	// Run matching YAML workflows
+	if len(matchingWorkflows) > 0 {
+		log.Info("running %d matching workflows", len(matchingWorkflows))
+		ctx := context.Background()
+
+		for _, wf := range matchingWorkflows {
+			log.Debug("executing workflow: %s", wf.Name)
+			r := runner.NewRunner(wf, evt, dir, sessionDir)
+			result := r.RunWithBlocking(ctx)
+
+			// If any workflow denies, the final result is deny
+			if result.PermissionDecision == "deny" {
+				log.Warn("workflow %s denied: %s", wf.Name, result.PermissionDecisionReason)
+				return outputWorkflowResult(result)
+			}
+
+			log.Debug("workflow %s allowed", wf.Name)
+			if result.PermissionDecisionReason != "" {
+				warnReasons = append(warnReasons, result.PermissionDecisionReason)
+			}
+			finalResult = result
+		}
 	}
 
 	if finalResult == nil {
 		finalResult = schema.NewAllowResult()
+	}
+
+	// Concatenate all warn reasons so no advisory feedback is lost
+	if len(warnReasons) > 1 && finalResult != nil {
+		finalResult.PermissionDecisionReason = strings.Join(warnReasons, "\n")
 	}
 
 	return outputWorkflowResult(finalResult)
@@ -879,7 +942,33 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	
 	// Load and match workflows
 	var matchingWorkflows []*schema.Workflow
+	var hookifyResults []*schema.WorkflowResult
+	sessionDir := os.Getenv("HOOKFLOW_SESSION_DIR")
+
 	for _, path := range workflowFiles {
+		ext := strings.ToLower(filepath.Ext(path))
+
+		// Hookify rules (.md files)
+		if ext == ".md" {
+			rule, err := hookify.ParseRule(path)
+			if err != nil {
+				// Skip invalid hookify rules
+				continue
+			}
+			if rule.GetLifecycle() != event.GetLifecycle() {
+				continue
+			}
+			if !hookify.MatchEvent(rule, event) {
+				continue
+			}
+			result := hookify.Evaluate(rule, event, sessionDir)
+			if result != nil {
+				hookifyResults = append(hookifyResults, result)
+			}
+			continue
+		}
+
+		// YAML workflows (.yml/.yaml files)
 		wf, err := schema.LoadWorkflow(path)
 		if err != nil {
 			// Skip invalid workflows
@@ -893,33 +982,52 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 		}
 	}
 	
-	if len(matchingWorkflows) == 0 {
-		// No matching workflows, allow by default
+	if len(matchingWorkflows) == 0 && len(hookifyResults) == 0 {
+		// No matching workflows or hookify rules, allow by default
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
 	}
 	
-	// Run matching workflows
-	ctx := context.Background()
+	// Aggregate results — deny wins
 	var finalResult *schema.WorkflowResult
-	
-	for _, wf := range matchingWorkflows {
-		r := runner.NewRunner(wf, event, dir, os.Getenv("HOOKFLOW_SESSION_DIR"))
-		result := r.RunWithBlocking(ctx)
-		
-		// If any workflow denies, the final result is deny
+	var warnReasons []string
+
+	// Check hookify results first (already evaluated)
+	for _, result := range hookifyResults {
 		if result.PermissionDecision == "deny" {
 			return outputWorkflowResult(result)
 		}
-		
-		// Keep the last allow result
+		if result.PermissionDecisionReason != "" {
+			warnReasons = append(warnReasons, result.PermissionDecisionReason)
+		}
 		finalResult = result
+	}
+
+	// Run matching YAML workflows
+	if len(matchingWorkflows) > 0 {
+		ctx := context.Background()
+		for _, wf := range matchingWorkflows {
+			r := runner.NewRunner(wf, event, dir, sessionDir)
+			result := r.RunWithBlocking(ctx)
+			if result.PermissionDecision == "deny" {
+				return outputWorkflowResult(result)
+			}
+			if result.PermissionDecisionReason != "" {
+				warnReasons = append(warnReasons, result.PermissionDecisionReason)
+			}
+			finalResult = result
+		}
 	}
 	
 	if finalResult == nil {
 		finalResult = schema.NewAllowResult()
 	}
-	
+
+	// Concatenate all warn reasons so no advisory feedback is lost
+	if len(warnReasons) > 1 && finalResult != nil {
+		finalResult.PermissionDecisionReason = strings.Join(warnReasons, "\n")
+	}
+
 	return outputWorkflowResult(finalResult)
 }
 
