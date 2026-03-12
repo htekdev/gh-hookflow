@@ -110,7 +110,7 @@ func (m *Matcher) matchToolTrigger(trigger *schema.ToolTrigger, event *schema.To
 			return false
 		}
 		argStr, _ := argValue.(string)
-		if !matchGlob(pattern, argStr) {
+		if !matchPlainGlob(pattern, argStr) {
 			return false
 		}
 	}
@@ -327,7 +327,7 @@ func (m *Matcher) matchPushTrigger(trigger *schema.PushTrigger, event *schema.Pu
 	return true
 }
 
-// matchGlob performs glob pattern matching
+// matchGlob performs glob pattern matching for file paths
 func matchGlob(pattern, path string) bool {
 	// Normalize path separators
 	pattern = filepath.ToSlash(pattern)
@@ -340,6 +340,24 @@ func matchGlob(pattern, path string) bool {
 
 	// Use filepath.Match for simple patterns
 	matched, _ := filepath.Match(pattern, path)
+	return matched
+}
+
+// matchPlainGlob performs glob matching without path separator semantics.
+// Unlike matchGlob, the * wildcard matches any character including / and \.
+// Use this for non-path values like shell commands and tool arguments where
+// forward slashes are not directory separators.
+func matchPlainGlob(pattern, value string) bool {
+	// filepath.Match treats os.PathSeparator as special — * won't match it.
+	// On Linux, / is the separator, so *rm* won't match "rm -rf /important".
+	// To do path-agnostic matching, replace both / and \ with a character
+	// that is never a path separator on any OS.
+	const safeChar = "\x01"
+	p := strings.ReplaceAll(pattern, "/", safeChar)
+	p = strings.ReplaceAll(p, "\\", safeChar)
+	v := strings.ReplaceAll(value, "/", safeChar)
+	v = strings.ReplaceAll(v, "\\", safeChar)
+	matched, _ := filepath.Match(p, v)
 	return matched
 }
 

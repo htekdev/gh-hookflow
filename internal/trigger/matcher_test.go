@@ -1172,3 +1172,119 @@ func TestPushTriggerBranchesIgnoreWithNoMatchingBranch(t *testing.T) {
 		t.Error("Expected non-ignored branch to match")
 	}
 }
+
+func TestMatchPlainGlob(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		value   string
+		want    bool
+	}{
+		{
+			name:    "simple wildcard match",
+			pattern: "*rm*",
+			value:   "rm -rf /important",
+			want:    true,
+		},
+		{
+			name:    "wildcard with forward slashes in value",
+			pattern: "*test*",
+			value:   "test /path/to/file",
+			want:    true,
+		},
+		{
+			name:    "exact match",
+			pattern: "hello",
+			value:   "hello",
+			want:    true,
+		},
+		{
+			name:    "no match",
+			pattern: "*foo*",
+			value:   "bar baz",
+			want:    false,
+		},
+		{
+			name:    "wildcard prefix",
+			pattern: "*.json",
+			value:   "config.json",
+			want:    true,
+		},
+		{
+			name:    "wildcard suffix",
+			pattern: "rm*",
+			value:   "rm -rf /tmp/data",
+			want:    true,
+		},
+		{
+			name:    "question mark wildcard",
+			pattern: "t?st",
+			value:   "test",
+			want:    true,
+		},
+		{
+			name:    "backslash in value",
+			pattern: "*file*",
+			value:   "C:\\Users\\file.txt",
+			want:    true,
+		},
+		{
+			name:    "empty pattern and value",
+			pattern: "",
+			value:   "",
+			want:    true,
+		},
+		{
+			name:    "empty pattern nonempty value",
+			pattern: "",
+			value:   "something",
+			want:    false,
+		},
+		{
+			name:    "mixed slashes",
+			pattern: "*important*",
+			value:   "rm -rf /path\\to/important",
+			want:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchPlainGlob(tt.pattern, tt.value)
+			if got != tt.want {
+				t.Errorf("matchPlainGlob(%q, %q) = %v, want %v", tt.pattern, tt.value, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchToolTriggerWithSlashesInArgs(t *testing.T) {
+	// Regression test: tool arg patterns must match values containing /
+	// This failed on Linux because filepath.Match treats * as not matching /
+	workflow := &schema.Workflow{
+		Name: "test-shell-command",
+		On: schema.OnConfig{
+			Tool: &schema.ToolTrigger{
+				Name: "powershell",
+				Args: map[string]string{
+					"command": "*rm*",
+				},
+			},
+		},
+	}
+
+	matcher := NewMatcher(workflow)
+
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "powershell",
+			Args: map[string]interface{}{
+				"command": "rm -rf /important",
+			},
+		},
+	}
+
+	if !matcher.Match(event) {
+		t.Error("Expected tool trigger to match command containing forward slashes")
+	}
+}

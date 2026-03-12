@@ -45,6 +45,13 @@ func Discover(rootDir string) ([]WorkflowFile, error) {
 			return nil
 		}
 
+		// For .md files, verify they have YAML frontmatter (hookify format)
+		if ext == ".md" {
+			if !hasYAMLFrontmatter(path) {
+				return nil
+			}
+		}
+
 		// Get relative path
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
@@ -91,6 +98,13 @@ func DiscoverByGlob(rootDir string, pattern string) ([]WorkflowFile, error) {
 			continue
 		}
 
+		// For .md files, verify they have YAML frontmatter (hookify format)
+		if ext == ".md" {
+			if !hasYAMLFrontmatter(path) {
+				continue
+			}
+		}
+
 		relPath, err := filepath.Rel(rootDir, path)
 		if err != nil {
 			relPath = path
@@ -117,4 +131,16 @@ func Exists(rootDir, workflowName string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// hasYAMLFrontmatter checks if a file starts with YAML frontmatter delimiter (---).
+// This is a lightweight check to distinguish hookify-format markdown files from
+// plain markdown (e.g., README.md) without doing a full parse.
+func hasYAMLFrontmatter(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	content := strings.TrimSpace(string(data))
+	return strings.HasPrefix(content, "---")
 }
