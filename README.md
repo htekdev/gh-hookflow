@@ -2,6 +2,33 @@
 
 A GitHub CLI extension that runs local workflows triggered by GitHub Copilot agent hooks — like GitHub Actions, but for your AI pair programming sessions. Enforce governance, quality gates, and safety checks in real-time.
 
+## Get Started
+
+```bash
+gh extension install htekdev/gh-hookflow
+gh hookflow register
+```
+
+That's it. Hookflow is now active for **every repo** you open with Copilot CLI. No per-repo setup needed.
+
+Now open Copilot CLI and ask:
+
+```
+Create a hookflow to prevent the creation of .env files
+```
+
+The agent knows how to create hookflow rules — the `register` command installs an agent skill that teaches it the syntax, patterns, and best practices.
+
+### What `register` does
+
+- Installs **personal hooks** at `~/.copilot/hooks/hooks.json` — runs hookflow on every tool call across all repos
+- Installs **agent skill** at `~/.copilot/skills/hookflow/SKILL.md` — teaches Copilot how to write hookflow rules
+
+### Prerequisites
+
+- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
+- [PowerShell Core](https://github.com/PowerShell/PowerShell) (`pwsh`) installed (workflow steps run in pwsh for cross-platform consistency)
+
 ## What Makes This Different
 
 **GitHub Copilot CLI hooks can block tool calls *before* they happen — but they can't block *after*.** Post-hook output is ignored by the Copilot CLI. This means if you validate a file after creation and it fails, you have no way to tell the agent.
@@ -22,99 +49,102 @@ This turns post-lifecycle hooks into **blocking validators** — something the C
 
 - **Block** dangerous edits in real-time (e.g., .env file modifications)
 - **Validate** content after creation and force the agent to fix it
-- **Lint** code as the agent writes it  
+- **Lint** code as the agent writes it
 - **Enforce** commit message conventions
 - **Run security scans** before code leaves the local machine
 - **Guard git push** — all pushes go through governance workflows
 
-## Prerequisites
+## Workflow Formats
 
-- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
-- [PowerShell Core](https://github.com/PowerShell/PowerShell) (`pwsh`) installed (workflow steps run in pwsh for cross-platform consistency)
+Hookflow supports two workflow formats. Both live in `.github/hookflows/`:
 
-## Installation
+### Hookify Rules (Recommended)
 
-```bash
-gh extension install htekdev/gh-hookflow
+Markdown files with YAML frontmatter. Simple, declarative, no shell scripting needed. Best for pattern matching and simple governance.
+
+```markdown
+---
+name: block-env-files
+description: Prevent creation or editing of .env files
+event: file
+action: block
+conditions:
+  - field: file_path
+    operator: regex_match
+    pattern: \.env
+lifecycle: pre
+---
+
+⚠️ **Sensitive File Blocked**
+
+Cannot create or edit `.env` files. Use environment variables or a secrets manager instead.
 ```
 
-This installs gh-hookflow as `gh hookflow` and integrates directly with Copilot CLI hooks.
+### YAML Workflows (Advanced)
 
-## Quick Start
+Full workflow files with shell steps, expressions, and multi-step pipelines. Use when you need scripting logic, conditional steps, or complex validation.
 
-### 1. Initialize gh-hookflow in your repository
+```yaml
+name: Validate API Spec
+on:
+  file:
+    lifecycle: post
+    paths: ['api-spec.json']
+    types: [create, edit]
+blocking: true
+steps:
+  - name: Validate schema
+    run: |
+      $spec = Get-Content "${{ event.file.path }}" | ConvertFrom-Json
+      if (-not $spec.response_schema) {
+        Write-Error "api-spec.json must include response_schema"
+        exit 1
+      }
+```
+
+> **When to use which:** Start with hookify rules. Move to YAML workflows only when you need shell commands, multi-step pipelines, conditional logic (`if:` expressions), or step outputs.
+
+## Repo-Specific Workflows
+
+After registering globally, add workflows to specific repos:
 
 ```bash
 cd your-project
-gh hookflow init
+gh hookflow init --repo   # scaffolds .github/hookflows/ with an example workflow
 ```
 
-This creates:
-- `.github/hookflows/` — Directory for your workflow files
-- `.github/hooks/hooks.json` — Copilot CLI hook configuration
-- `.github/hookflows/example.yml` — Example workflow to get started
-- `.github/skills/hookflow/SKILL.md` — AI agent guidance for workflow creation
+Or just ask Copilot to create one — it knows the syntax from the installed skill.
 
-### 2. Create a workflow
+### How `register` vs `init` work together
 
-Use AI to generate a workflow:
+| Command | Scope | What it does |
+|---------|-------|-------------|
+| `gh hookflow register` | **Global** (all repos) | Installs personal hooks + agent skill in `~/.copilot/`. Run once. |
+| `gh hookflow init` | **Per-repo** | Creates `.github/hooks/hooks.json` for repo-level hooks. |
+| `gh hookflow init --repo` | **Per-repo** | Also scaffolds `.github/hookflows/` with example workflow. |
+
+When both exist, repo hooks run first and personal hooks automatically defer (via the `--global` flag). This means repo-specific workflows always take priority.
+
+### Test and share
 
 ```bash
-gh hookflow create "block edits to .env files"
+gh hookflow test --event file --action edit --path ".env"   # test locally
+git add .github/ && git commit -m "Add hookflow workflows"  # share with team
 ```
 
-Or manually create `.github/hookflows/block-env.yml`:
-
-```yaml
-name: Block .env Files
-description: Prevent edits to environment files
-
-on:
-  file:
-    paths:
-      - '**/.env*'
-      - '**/secrets/**'
-    types:
-      - edit
-      - create
-
-blocking: true
-
-steps:
-  - name: Deny sensitive file access
-    run: |
-      echo "❌ Cannot modify sensitive file: ${{ event.file.path }}"
-      exit 1
-```
-
-### 3. Test your workflow
-
-```bash
-# Test with a mock file event
-gh hookflow test --event file --action edit --path ".env"
-
-# Test with a mock commit event  
-gh hookflow test --event commit --path src/app.ts
-```
-
-### 4. Commit and share
-
-```bash
-git add .github/
-git commit -m "Add gh-hookflow workflows"
-git push
-```
-
-Team members can install with `gh extension install htekdev/gh-hookflow` to automatically run your workflows during their Copilot sessions.
+Team members just need `gh extension install htekdev/gh-hookflow && gh hookflow register` to run your workflows during their Copilot sessions.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `gh hookflow init` | Initialize gh-hookflow for a repository |
+| `gh hookflow register` | Register personal hooks and agent skill (global, all repos) |
+| `gh hookflow register --unregister` | Remove personal hooks and skill |
+| `gh hookflow init` | Initialize per-repo hooks |
+| `gh hookflow init --repo` | Also scaffold example workflows |
 | `gh hookflow create <prompt>` | Create a workflow using AI |
 | `gh hookflow discover` | List workflows in the current directory |
-| `gh hookflow validate` | Validate workflow YAML files |
+| `gh hookflow validate` | Validate workflow files |
 | `gh hookflow test` | Test a workflow with a mock event |
 | `gh hookflow run` | Run workflows (used by hooks internally) |
 | `gh hookflow git-push` | Push with pre/post governance workflows |
@@ -177,8 +207,11 @@ The agent learns what went wrong and can fix it — turning a passive post-hook 
 ## Usage
 
 ```bash
-# Initialize a repository (creates .github/hookflows/ and .github/hooks/hooks.json)
-gh hookflow init
+# One-time global setup (personal hooks + skill for all repos)
+gh hookflow register
+
+# Initialize a repository with example workflows
+gh hookflow init --repo
 
 # Discover workflows in the current directory
 gh hookflow discover

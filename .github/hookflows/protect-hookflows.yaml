@@ -24,10 +24,19 @@ steps:
         exit 1
       }
 
-      # Block deletion of entire steps section
-      if ($content -notmatch 'steps:') {
-        Write-Error "DENIED: Cannot remove 'steps:' from hookflow '$filePath'. Hookflows must have enforcement steps."
-        exit 1
+      # Block deletion of enforcement logic
+      # YAML workflows require 'steps:', hookify (.md) files use 'conditions:' or 'pattern:'
+      $isHookify = $filePath -match '\.md$'
+      if ($isHookify) {
+        if ($content -notmatch 'conditions:' -and $content -notmatch 'pattern:') {
+          Write-Error "DENIED: Hookify file '$filePath' must have 'conditions:' or 'pattern:' for enforcement."
+          exit 1
+        }
+      } else {
+        if ($content -notmatch 'steps:') {
+          Write-Error "DENIED: Cannot remove 'steps:' from hookflow '$filePath'. Hookflows must have enforcement steps."
+          exit 1
+        }
       }
 
       # Block suspicious patterns that weaken enforcement

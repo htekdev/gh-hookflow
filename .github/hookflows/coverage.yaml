@@ -1,16 +1,15 @@
-
 name: Test Coverage Enforcement
 description: Ensures code changes maintain minimum test coverage before commit
 
 on:
   commit:
+    lifecycle: pre
     paths:
       - 'cmd/**'
       - 'internal/**'
       - 'packages/**'
     paths-ignore:
       - '**/*.md'
-
 
 blocking: true
 
