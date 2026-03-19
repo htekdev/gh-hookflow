@@ -4593,6 +4593,85 @@ func TestPrimitiveGuardsWithStringToolArgs(t *testing.T) {
 	}
 }
 
+// TestPrimitiveGitPushPatternBypassPrevention tests that the git push primitive guard
+// cannot be bypassed by inserting flags between "git" and "push".
+// This was a real security gap: "git -c key=val push" and "git --no-pager push"
+// previously bypassed the guard because the regex required "push" immediately after "git".
+func TestPrimitiveGitPushPatternBypassPrevention(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		wantDeny bool
+	}{
+		// === Direct git push (must block) ===
+		{name: "plain git push", command: "git push", wantDeny: true},
+		{name: "git push with remote", command: "git push origin main", wantDeny: true},
+		{name: "git push with force flag", command: "git push --force origin main", wantDeny: true},
+		{name: "git push with -f", command: "git push -f origin main", wantDeny: true},
+		{name: "git push with -u", command: "git push -u origin feature", wantDeny: true},
+		{name: "git push with --set-upstream", command: "git push --set-upstream origin feature", wantDeny: true},
+		{name: "git push with --no-verify", command: "git push --no-verify origin main", wantDeny: true},
+		{name: "git push tags", command: "git push --tags", wantDeny: true},
+		{name: "git push delete", command: "git push --delete origin old-branch", wantDeny: true},
+		{name: "git push with multiple args", command: "git push origin main feature release", wantDeny: true},
+
+		// === Flag insertion bypasses (must block — previously bypassed) ===
+		{name: "git -c config push", command: "git -c push.default=current push origin main", wantDeny: true},
+		{name: "git -c with quoted value push", command: `git -c http.extraHeader="Authorization: Bearer xxx" push origin main`, wantDeny: true},
+		{name: "git -c multiple configs push", command: "git -c core.autocrlf=false -c push.default=current push origin main", wantDeny: true},
+		{name: "git --no-pager push", command: "git --no-pager push origin main", wantDeny: true},
+		{name: "git --no-optional-locks push", command: "git --no-optional-locks push origin main", wantDeny: true},
+		{name: "git --git-dir push", command: "git --git-dir=/repo/.git push origin main", wantDeny: true},
+		{name: "git --work-tree push", command: "git --work-tree=/repo push origin main", wantDeny: true},
+		{name: "git -C path push", command: "git -C /some/path push origin main", wantDeny: true},
+		{name: "git with env override push", command: "git -c credential.helper=store push origin main", wantDeny: true},
+
+		// === Chained with other commands (must block) ===
+		{name: "echo then git push", command: "echo 'pushing...' && git push origin main", wantDeny: true},
+		{name: "cd then git push", command: "cd /repo; git push origin main", wantDeny: true},
+		{name: "piped git push", command: "echo y | git push origin main", wantDeny: true},
+		{name: "git push in multiline", command: "echo hi\ngit push origin main", wantDeny: true},
+
+		// === PowerShell variants (must block) ===
+		{name: "powershell & git push", command: "& git push origin main", wantDeny: true},
+		{name: "powershell & git -c push", command: "& git -c push.default=current push origin main", wantDeny: true},
+
+		// === Safe commands (must allow) ===
+		{name: "gh hookflow git-push", command: "gh hookflow git-push origin main", wantDeny: false},
+		{name: "git commit", command: "git commit -m 'test'", wantDeny: false},
+		{name: "git pull", command: "git pull origin main", wantDeny: false},
+		{name: "git status", command: "git status", wantDeny: false},
+		{name: "git log", command: "git log --oneline", wantDeny: false},
+		{name: "git diff", command: "git diff HEAD", wantDeny: false},
+		{name: "git fetch", command: "git fetch origin", wantDeny: false},
+		{name: "git add", command: "git add -A", wantDeny: false},
+		{name: "echo with push word", command: "echo 'please push the button'", wantDeny: false},
+		{name: "grep for push", command: "grep -r 'push' src/", wantDeny: false},
+		{name: "git stash push", command: "git stash push -m 'save'", wantDeny: false},
+		{name: "git stash push no args", command: "git stash push", wantDeny: false},
+		{name: "empty command", command: "", wantDeny: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build JSON input matching what primitiveGuards expects
+			escapedCmd := strings.ReplaceAll(tt.command, `\`, `\\`)
+			escapedCmd = strings.ReplaceAll(escapedCmd, `"`, `\"`)
+			escapedCmd = strings.ReplaceAll(escapedCmd, "\n", `\n`)
+			input := fmt.Sprintf(`{"toolName":"powershell","toolArgs":{"command":"%s"},"cwd":"/test"}`, escapedCmd)
+
+			result := primitiveGuards([]byte(input))
+			gotDeny := result != nil
+			if tt.wantDeny && !gotDeny {
+				t.Errorf("expected git push guard to BLOCK %q, but it was ALLOWED (bypass!)", tt.command)
+			}
+			if !tt.wantDeny && gotDeny {
+				t.Errorf("expected git push guard to ALLOW %q, but it was BLOCKED (false positive: %s)", tt.command, result.PermissionDecisionReason)
+			}
+		})
+	}
+}
+
 // TestComplianceExemptionWithStringToolArgs tests the end-to-end compliance
 // exemption flow when toolArgs arrives as a JSON string (preToolUse format).
 // This was the root cause of the init deadlock: the detector failed to parse

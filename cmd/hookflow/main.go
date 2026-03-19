@@ -608,7 +608,10 @@ func primitiveGuards(input []byte) *schema.WorkflowResult {
 	}
 
 	// Guard 1: Block git push — must use 'gh hookflow git-push' CLI command
-	if primitiveGitPushPattern.MatchString(command) {
+	// The pattern catches "git push" even with flags between "git" and "push"
+	// (e.g., "git -c key=val push"). Excludes "git stash push" which is a
+	// legitimate local-only operation, not a network push.
+	if primitiveGitPushPattern.MatchString(command) && !gitStashPushPattern.MatchString(command) {
 		return schema.NewDenyResult(
 			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push' instead.\n\n" +
 				"Run: gh hookflow git-push <remote> <branch> [flags]\n\n" +
@@ -626,8 +629,16 @@ func primitiveGuards(input []byte) *schema.WorkflowResult {
 }
 
 var (
-	// Matches "git push" anywhere in the command (multiline safe)
-	primitiveGitPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+push\b`)
+	// Matches "git [any flags/args] push" anywhere in the command, even with flags
+	// between "git" and "push" (e.g., "git -c key=val push", "git --no-pager push").
+	// Without this, agents can bypass governance with "git -c x push origin main".
+	//
+	// The pattern uses \S+\s+ to consume any non-whitespace tokens (flags, flag values)
+	// between "git" and "push". This is intentionally greedy to catch all bypass variants.
+	primitiveGitPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+(?:\S+\s+)*push\b`)
+	// Matches "git stash push" which is a local stash operation, not a network push.
+	// Used to exclude false positives from primitiveGitPushPattern.
+	gitStashPushPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+stash\s+push\b`)
 	// Matches two or more git commands chained via &&, ;, newlines, or pipes
 	primitiveMultiGitPattern = regexp.MustCompile(`(?mi)(?:^|\s|&&|;|\|)git\s+\w+.*(?:&&|;|\n).*git\s+\w+`)
 	// Matches "hookflow init" in a command (for compliance check exemption)
