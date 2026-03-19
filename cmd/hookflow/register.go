@@ -1029,8 +1029,9 @@ All pushes must go through hookflow governance:
 
 ` + "```bash" + `
 gh hookflow git-push origin main
-gh hookflow git-push-status <activity-id>
 ` + "```" + `
+
+The command runs synchronously through 3 phases (pre-push workflows → git push → post-push workflows) and prints the result as JSON when complete.
 
 Never use ` + "`git push`" + ` directly — it is blocked by hookflow primitive guards.
 `

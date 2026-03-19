@@ -2,40 +2,77 @@ package e2e
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
-// TestPushBackgroundSuccessful tests the full 3-phase push flow with no workflows.
-// With no push-trigger workflows, the push should succeed.
-func TestPushBackgroundSuccessful(t *testing.T) {
+// pushResponse mirrors the JSON structure from push.Response.
+type pushResponse struct {
+	Status   string          `json:"status"`
+	Push     *pushPhaseJSON  `json:"push,omitempty"`
+	PrePush  *phaseJSON      `json:"pre_push,omitempty"`
+	PostPush *postPushJSON   `json:"post_push,omitempty"`
+	Message  string          `json:"message"`
+}
+
+type pushPhaseJSON struct {
+	Success bool   `json:"success"`
+	Output  string `json:"output,omitempty"`
+}
+
+type phaseJSON struct {
+	Passed       bool `json:"passed"`
+	WorkflowsRun int  `json:"workflows_run"`
+}
+
+type postPushJSON struct {
+	Passed       bool `json:"passed"`
+	WorkflowsRun int  `json:"workflows_run"`
+}
+
+func parsePushResponse(t *testing.T, output string) *pushResponse {
+	t.Helper()
+
+	// The JSON output may be preceded by stderr progress messages; find the JSON object
+	start := strings.Index(output, "{")
+	if start < 0 {
+		t.Fatalf("no JSON object found in output:\n%s", output)
+	}
+	jsonStr := output[start:]
+
+	var resp pushResponse
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		t.Fatalf("failed to parse push response JSON: %v\nOutput:\n%s", err, jsonStr)
+	}
+	return &resp
+}
+
+// TestPushSuccessfulNoWorkflows tests the full 3-phase push flow with no workflows.
+func TestPushSuccessfulNoWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
 	output, err := runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 			"HOOKFLOW_FAKE_GIT_PUSH_OUTPUT=Everything up-to-date",
 		},
 	)
 	if err != nil {
-		t.Fatalf("git-push --background failed: %v\nOutput: %s", err, output)
+		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	state := loadActivityState(t, actID)
-	if state.Status != "completed" {
-		t.Errorf("expected status completed, got %s", state.Status)
+	resp := parsePushResponse(t, output)
+	if resp.Status != "completed" {
+		t.Errorf("expected status completed, got %s", resp.Status)
+	}
+	if resp.Push == nil || !resp.Push.Success {
+		t.Error("expected push.success = true")
 	}
 }
 
-// TestPushBackgroundPrePushDenies tests that a pre-push workflow denial prevents the push.
-func TestPushBackgroundPrePushDenies(t *testing.T) {
+// TestPushPrePushDenies tests that a pre-push workflow denial prevents the push.
+func TestPushPrePushDenies(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"block-push.yml": `name: Block Push
 on:
@@ -51,52 +88,52 @@ steps:
 `,
 	})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
-	_, _ = runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+	output, _ := runHookflowCmd(t,
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 		},
 	)
 
-	state := loadActivityState(t, actID)
-	if state.Status != "failed" {
-		t.Errorf("expected status failed, got %s", state.Status)
+	resp := parsePushResponse(t, output)
+	if resp.Status != "failed" {
+		t.Errorf("expected status failed, got %s", resp.Status)
 	}
-	if state.Summary == "" {
-		t.Error("expected non-empty summary on failure")
+	if resp.PrePush == nil || resp.PrePush.Passed {
+		t.Error("expected pre_push.passed = false")
+	}
+	if resp.Message == "" {
+		t.Error("expected non-empty message on failure")
 	}
 }
 
-// TestPushBackgroundGitFailure tests behavior when the git push itself fails.
-func TestPushBackgroundGitFailure(t *testing.T) {
+// TestPushGitFailure tests behavior when the git push itself fails.
+func TestPushGitFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
-	_, _ = runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+	output, _ := runHookflowCmd(t,
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 			"HOOKFLOW_FAKE_GIT_PUSH_FAIL=1",
 			"HOOKFLOW_FAKE_GIT_PUSH_ERROR=remote rejected: permission denied",
 		},
 	)
 
-	state := loadActivityState(t, actID)
-	if state.Status != "failed" {
-		t.Errorf("expected status failed, got %s", state.Status)
+	resp := parsePushResponse(t, output)
+	if resp.Status != "failed" {
+		t.Errorf("expected status failed, got %s", resp.Status)
 	}
-	if !strings.Contains(state.Summary, "push failed") && !strings.Contains(state.Summary, "Git push failed") {
-		t.Errorf("expected summary to mention push failure, got: %s", state.Summary)
+	if resp.Push == nil || resp.Push.Success {
+		t.Error("expected push.success = false")
+	}
+	if !strings.Contains(resp.Message, "push failed") && !strings.Contains(resp.Message, "Git push failed") {
+		t.Errorf("expected message to mention push failure, got: %s", resp.Message)
 	}
 }
 
-// TestPushBackgroundWithPostPush tests the full 3-phase flow with post-push workflows.
-func TestPushBackgroundWithPostPush(t *testing.T) {
+// TestPushWithPostPushWorkflows tests the full 3-phase flow with post-push workflows.
+func TestPushWithPostPushWorkflows(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-push-notify.yml": `name: Post Push Notify
 on:
@@ -110,28 +147,28 @@ steps:
 `,
 	})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
 	output, err := runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 			"HOOKFLOW_FAKE_GIT_PUSH_OUTPUT=To github.com:test/repo.git\n   abc1234..def5678  main -> main",
 		},
 	)
 	if err != nil {
-		t.Fatalf("git-push --background failed: %v\nOutput: %s", err, output)
+		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	state := loadActivityState(t, actID)
-	if state.Status != "completed" {
-		t.Errorf("expected status completed, got %s (summary: %s)", state.Status, state.Summary)
+	resp := parsePushResponse(t, output)
+	if resp.Status != "completed" {
+		t.Errorf("expected status completed, got %s (message: %s)", resp.Status, resp.Message)
+	}
+	if resp.PostPush == nil || resp.PostPush.WorkflowsRun < 1 {
+		t.Error("expected post_push.workflows_run >= 1")
 	}
 }
 
-// TestPushBackgroundPostPushFailure tests that post-push failure is recorded correctly.
-func TestPushBackgroundPostPushFailure(t *testing.T) {
+// TestPushPostPushFailure tests that post-push failure is recorded correctly.
+func TestPushPostPushFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-push-check.yml": `name: Post Push Check
 on:
@@ -146,144 +183,59 @@ steps:
 `,
 	})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
-	_, _ = runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+	output, _ := runHookflowCmd(t,
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 			"HOOKFLOW_FAKE_GIT_PUSH_OUTPUT=Everything up-to-date",
 		},
 	)
 
-	state := loadActivityState(t, actID)
-	if state.Status != "failed" {
-		t.Errorf("expected status failed, got %s", state.Status)
+	resp := parsePushResponse(t, output)
+	if resp.Status != "failed" {
+		t.Errorf("expected status failed, got %s", resp.Status)
 	}
-	if !strings.Contains(state.Summary, "post-push") {
-		t.Errorf("expected summary to mention post-push, got: %s", state.Summary)
+	if resp.Push == nil || !resp.Push.Success {
+		t.Error("expected push.success = true (push itself succeeded)")
 	}
-}
-
-// TestPushStatusCommand tests the git-push-status subcommand.
-func TestPushStatusCommand(t *testing.T) {
-	actID := createTestActivity(t, []string{"origin", "main"})
-
-	output, err := runHookflowCmd(t,
-		[]string{"git-push-status", actID},
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("git-push-status failed: %v\nOutput: %s", err, output)
+	if resp.PostPush == nil || resp.PostPush.Passed {
+		t.Error("expected post_push.passed = false")
 	}
-
-	// Activity should be in running state since background hasn't run
-	if !strings.Contains(output, "progress") && !strings.Contains(output, "running") &&
-		!strings.Contains(output, "pending") && !strings.Contains(output, actID) {
-		t.Errorf("expected status output to reference activity state, got: %s", output)
+	if !strings.Contains(resp.Message, "post-push") {
+		t.Errorf("expected message to mention post-push, got: %s", resp.Message)
 	}
 }
 
-// TestPushActivityPhaseTracking verifies all 3 phases are recorded in the activity state.
-func TestPushActivityPhaseTracking(t *testing.T) {
+// TestPushJSONOutputStructure verifies the JSON response has all expected fields.
+func TestPushJSONOutputStructure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{})
 
-	actID := createTestActivity(t, []string{"origin", "main"})
-
-	_, _ = runHookflowCmd(t,
-		[]string{"git-push", "--background", "--dir", workspace, "origin", "main"},
+	output, err := runHookflowCmd(t,
+		[]string{"git-push", "--dir", workspace, "origin", "main"},
 		[]string{
-			"HOOKFLOW_PUSH_ACTIVITY_ID=" + actID,
 			"HOOKFLOW_FAKE_GIT_BRANCH=main",
 			"HOOKFLOW_FAKE_GIT_PUSH_OUTPUT=Everything up-to-date",
 		},
 	)
-
-	state := loadActivityState(t, actID)
-
-	// Check all 3 phases exist
-	phases := []string{"pre_push", "push", "post_push"}
-	for _, phase := range phases {
-		ps, ok := state.Phases[phase]
-		if !ok {
-			t.Errorf("missing phase %s in activity state", phase)
-			continue
-		}
-		if ps.Status != "completed" {
-			t.Errorf("expected phase %s to be completed, got %s", phase, ps.Status)
-		}
-	}
-}
-
-// --- Activity helpers ---
-
-type activityState struct {
-	ID      string                        `json:"id"`
-	Status  string                        `json:"status"`
-	GitArgs []string                      `json:"git_args"`
-	Summary string                        `json:"summary"`
-	Phases  map[string]*activityPhaseJSON `json:"phases"`
-}
-
-type activityPhaseJSON struct {
-	Status string `json:"status"`
-	Output string `json:"output"`
-	Error  string `json:"error"`
-}
-
-func createTestActivity(t *testing.T, gitArgs []string) string {
-	t.Helper()
-
-	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatalf("Failed to get home dir: %v", err)
+		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	id := "e2etest-" + time.Now().Format("150405.000")
-	id = strings.ReplaceAll(id, ".", "")
-	actDir := filepath.Join(home, ".hookflow", "activities", id)
-	logsDir := filepath.Join(actDir, "logs")
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		t.Fatalf("Failed to create activity dir: %v", err)
+	resp := parsePushResponse(t, output)
+
+	if resp.Status != "completed" && resp.Status != "failed" {
+		t.Errorf("expected status 'completed' or 'failed', got %q", resp.Status)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(actDir) })
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	state := map[string]interface{}{
-		"id":         id,
-		"status":     "running",
-		"git_args":   gitArgs,
-		"created_at": now,
-		"updated_at": now,
-		"phases": map[string]interface{}{
-			"pre_push":  map[string]interface{}{"status": "pending"},
-			"push":      map[string]interface{}{"status": "pending"},
-			"post_push": map[string]interface{}{"status": "pending"},
-		},
+	if resp.Message == "" {
+		t.Error("expected non-empty message")
 	}
-	data, _ := json.MarshalIndent(state, "", "  ")
-	if err := os.WriteFile(filepath.Join(actDir, "state.json"), data, 0644); err != nil {
-		t.Fatalf("Failed to write activity state: %v", err)
+	if resp.Push == nil {
+		t.Error("expected push field to be present")
 	}
-
-	return id
-}
-
-func loadActivityState(t *testing.T, actID string) *activityState {
-	t.Helper()
-
-	home, _ := os.UserHomeDir()
-	statePath := filepath.Join(home, ".hookflow", "activities", actID, "state.json")
-
-	data, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("Failed to read activity state: %v", err)
+	if resp.PrePush == nil {
+		t.Error("expected pre_push field to be present")
 	}
-
-	var state activityState
-	if err := json.Unmarshal(data, &state); err != nil {
-		t.Fatalf("Failed to parse activity state: %v\n%s", err, data)
+	if resp.PostPush == nil {
+		t.Error("expected post_push field to be present")
 	}
-	return &state
 }

@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -385,48 +384,6 @@ steps:
 	assertAllow(t, result, output)
 	if !strings.Contains(output, "action=edit") {
 		t.Errorf("Expected action=edit in output:\n%s", output)
-	}
-}
-
-// =============================================================================
-// Tests targeting: activity status display
-// =============================================================================
-
-func TestGitPushStatusMultipleActivities(t *testing.T) {
-	homeDir := actHomeDir()
-
-	activities := []struct {
-		id     string
-		status string
-	}{
-		{"e2e-multi-1", "completed"},
-		{"e2e-multi-2", "failed"},
-		{"e2e-multi-3", "running"},
-	}
-
-	for _, a := range activities {
-		actDir := filepath.Join(homeDir, ".hookflow", "activities", a.id)
-		_ = os.MkdirAll(actDir, 0755)
-		state := map[string]interface{}{
-			"id": a.id, "status": a.status,
-			"git_args":   []string{"origin", "main"},
-			"created_at": "2024-01-01T00:00:00Z",
-			"updated_at": "2024-01-01T00:00:01Z",
-		}
-		data, _ := json.MarshalIndent(state, "", "  ")
-		_ = os.WriteFile(filepath.Join(actDir, "state.json"), data, 0644)
-	}
-	defer func() {
-		for _, a := range activities {
-			_ = os.RemoveAll(filepath.Join(homeDir, ".hookflow", "activities", a.id))
-		}
-	}()
-
-	for _, a := range activities {
-		output, _ := runHookflowCmd(t, []string{"git-push-status", a.id}, nil)
-		if !strings.Contains(strings.ToLower(output), a.status) {
-			t.Errorf("Expected status '%s' for activity '%s' in output:\n%s", a.status, a.id, output)
-		}
 	}
 }
 

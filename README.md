@@ -148,7 +148,6 @@ Team members just need `gh extension install htekdev/gh-hookflow && gh hookflow 
 | `gh hookflow test` | Test a workflow with a mock event |
 | `gh hookflow run` | Run workflows (used by hooks internally) |
 | `gh hookflow git-push` | Push with pre/post governance workflows |
-| `gh hookflow git-push-status` | Check status of an async git push |
 | `gh hookflow logs` | View gh-hookflow debug logs |
 | `gh hookflow triggers` | List available trigger types |
 | `gh hookflow version` | Show version information |
@@ -458,12 +457,9 @@ These guards scan raw hook input regardless of tool name and cannot be bypassed.
 ```bash
 # Push with governance workflows
 gh hookflow git-push origin main
-
-# Check push status
-gh hookflow git-push-status <activity_id>
 ```
 
-The push runs in 3 phases: pre-push workflows → git push → post-push workflows (e.g., monitor CI checks on the PR).
+The push runs synchronously through 3 phases: pre-push workflows → git push → post-push workflows. The command prints the result as JSON when complete.
 
 ## Debugging
 

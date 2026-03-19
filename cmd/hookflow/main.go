@@ -611,8 +611,7 @@ func primitiveGuards(input []byte) *schema.WorkflowResult {
 	if primitiveGitPushPattern.MatchString(command) {
 		return schema.NewDenyResult(
 			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push' instead.\n\n" +
-				"Run: gh hookflow git-push <remote> <branch> [flags]\n" +
-				"Then check status: gh hookflow git-push-status <activity_id>\n\n" +
+				"Run: gh hookflow git-push <remote> <branch> [flags]\n\n" +
 				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
 	}
 
@@ -662,8 +661,7 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 		log.Info("blocking direct git push — use 'gh hookflow git-push' instead")
 		result := schema.NewDenyResult(
 			"Direct git push is blocked by hookflow. Use 'gh hookflow git-push' instead.\n\n" +
-				"Run: gh hookflow git-push <remote> <branch> [flags]\n" +
-				"Then check status: gh hookflow git-push-status <activity_id>\n\n" +
+				"Run: gh hookflow git-push <remote> <branch> [flags]\n\n" +
 				"IMPORTANT: Always use 'gh hookflow git-push' instead of 'git push'.")
 		return outputWorkflowResult(result)
 	}
