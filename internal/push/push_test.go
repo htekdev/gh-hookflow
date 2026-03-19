@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/htekdev/gh-hookflow/internal/activity"
 )
 
 func TestBuildPushEvent(t *testing.T) {
@@ -44,48 +42,26 @@ func TestBuildPushEventWithLifecycles(t *testing.T) {
 	}
 }
 
-func TestLifecycleToPhase(t *testing.T) {
-	tests := []struct {
-		lifecycle string
-		want      activity.Phase
-	}{
-		{"pre", activity.PhasePrePush},
-		{"post", activity.PhasePostPush},
-		{"unknown", activity.PhasePrePush},
+func TestResponseStatusConstants(t *testing.T) {
+	if StatusCompleted != "completed" {
+		t.Errorf("expected StatusCompleted to be 'completed', got %q", StatusCompleted)
 	}
-
-	for _, tt := range tests {
-		got := LifecycleToPhase(tt.lifecycle)
-		if got != tt.want {
-			t.Errorf("LifecycleToPhase(%q) = %q, want %q", tt.lifecycle, got, tt.want)
-		}
+	if StatusFailed != "failed" {
+		t.Errorf("expected StatusFailed to be 'failed', got %q", StatusFailed)
 	}
 }
 
-func TestResponseSerialization(t *testing.T) {
+func TestResponseFields(t *testing.T) {
 	resp := &Response{
-		ActivityID: "abc123",
-		Status:     activity.StatusCompleted,
-		PrePush:    &PhaseResult{Passed: true, WorkflowsRun: 2},
-		Push:       &PushPhaseResult{Success: true, Output: "Everything up-to-date"},
-		PostPush:   &PostPushResult{Passed: true, WorkflowsRun: 1},
-		Message:    "Push and all checks completed successfully.",
+		Status:  StatusCompleted,
+		Message: "Push completed successfully.",
 	}
 
-	if resp.ActivityID != "abc123" {
-		t.Errorf("expected activity_id 'abc123', got %q", resp.ActivityID)
-	}
-	if resp.Status != activity.StatusCompleted {
+	if resp.Status != StatusCompleted {
 		t.Errorf("expected status 'completed', got %q", resp.Status)
 	}
-	if !resp.PrePush.Passed {
-		t.Error("expected pre_push.passed = true")
-	}
-	if !resp.Push.Success {
-		t.Error("expected push.success = true")
-	}
-	if !resp.PostPush.Passed {
-		t.Error("expected post_push.passed = true")
+	if resp.Message == "" {
+		t.Error("expected non-empty message")
 	}
 }
 
@@ -94,12 +70,7 @@ func TestRunPushWorkflowsNoWorkflowDir(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 	t.Setenv("USERPROFILE", tmpDir)
 
-	act, err := activity.NewActivity([]string{"origin", "main"})
-	if err != nil {
-		t.Fatalf("NewActivity failed: %v", err)
-	}
-
-	result, err := runPushWorkflows(tmpDir, act, "pre", false)
+	result, err := runPushWorkflows(tmpDir, "pre", false)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -133,12 +104,7 @@ steps:
 		t.Fatal(err)
 	}
 
-	act, err := activity.NewActivity([]string{"origin", "main"})
-	if err != nil {
-		t.Fatalf("NewActivity failed: %v", err)
-	}
-
-	result, err := runPushWorkflows(tmpDir, act, "pre", false)
+	result, err := runPushWorkflows(tmpDir, "pre", false)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -172,12 +138,7 @@ steps:
 		t.Fatal(err)
 	}
 
-	act, err := activity.NewActivity([]string{"origin", "main"})
-	if err != nil {
-		t.Fatalf("NewActivity failed: %v", err)
-	}
-
-	result, err := runPushWorkflows(tmpDir, act, "pre", false)
+	result, err := runPushWorkflows(tmpDir, "pre", false)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -186,14 +147,6 @@ steps:
 	}
 	if result.workflowsRun != 1 {
 		t.Errorf("expected 1 workflow run, got %d", result.workflowsRun)
-	}
-
-	phase := act.Phases[activity.PhasePrePush]
-	if len(phase.Workflows) != 1 {
-		t.Fatalf("expected 1 workflow in activity, got %d", len(phase.Workflows))
-	}
-	if !phase.Workflows[0].Success {
-		t.Error("expected workflow to be successful in activity")
 	}
 }
 
@@ -219,12 +172,7 @@ steps:
 		t.Fatal(err)
 	}
 
-	act, err := activity.NewActivity([]string{"origin", "main"})
-	if err != nil {
-		t.Fatalf("NewActivity failed: %v", err)
-	}
-
-	result, err := runPushWorkflows(tmpDir, act, "pre", false)
+	result, err := runPushWorkflows(tmpDir, "pre", false)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

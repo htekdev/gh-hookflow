@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,111 +35,6 @@ func TestCreateDryRun(t *testing.T) {
 		if !strings.Contains(strings.ToUpper(output), "COPILOT") && !strings.Contains(strings.ToUpper(output), "API") && !strings.Contains(strings.ToUpper(output), "TOKEN") {
 			t.Errorf("create --dry-run failed with unexpected error: %v\nOutput: %s", err, output)
 		}
-	}
-}
-
-// =============================================================================
-// Tests targeting: buildFailureMessage, writePhaseDetails, writePhaseLogs
-// (git_push_status.go:79-157), ReadLogs (activity.go:254)
-// =============================================================================
-
-func TestGitPushStatusPrePushFailure(t *testing.T) {
-	activityID := "e2e-prepush-fail"
-	actDir := filepath.Join(actHomeDir(), ".hookflow", "activities", activityID)
-	_ = os.MkdirAll(filepath.Join(actDir, "logs"), 0755)
-	defer func() { _ = os.RemoveAll(actDir) }()
-
-	actState := map[string]interface{}{
-		"id": activityID, "status": "failed",
-		"git_args": []string{"origin", "main"},
-		"created_at": "2024-01-01T00:00:00Z", "updated_at": "2024-01-01T00:00:01Z",
-		"phases": map[string]interface{}{
-			"pre_push": map[string]interface{}{
-				"status": "failed", "error": "workflow validation denied",
-				"workflows": []map[string]interface{}{
-					{"name": "lint-check", "status": "completed", "success": true},
-					{"name": "test-check", "status": "completed", "success": false, "error": "tests failed"},
-				},
-			},
-		},
-	}
-	actJSON, _ := json.MarshalIndent(actState, "", "  ")
-	_ = os.WriteFile(filepath.Join(actDir, "state.json"), actJSON, 0644)
-	_ = os.WriteFile(filepath.Join(actDir, "logs", "pre_push-test-check.log"),
-		[]byte("Running tests...\nFAIL: TestFoo expected true got false\n"), 0644)
-
-	output, _ := runHookflowCmd(t, []string{"git-push-status", activityID}, nil)
-
-	if !strings.Contains(output, "test-check") {
-		t.Errorf("Expected workflow name 'test-check' in output:\n%s", output)
-	}
-	if !strings.Contains(output, "FAILED") {
-		t.Errorf("Expected 'FAILED' in output:\n%s", output)
-	}
-}
-
-func TestGitPushStatusPostPushFailure(t *testing.T) {
-	activityID := "e2e-postpush-fail"
-	actDir := filepath.Join(actHomeDir(), ".hookflow", "activities", activityID)
-	_ = os.MkdirAll(filepath.Join(actDir, "logs"), 0755)
-	defer func() { _ = os.RemoveAll(actDir) }()
-
-	actState := map[string]interface{}{
-		"id": activityID, "status": "failed",
-		"git_args": []string{"origin", "main"},
-		"created_at": "2024-01-01T00:00:00Z", "updated_at": "2024-01-01T00:00:05Z",
-		"phases": map[string]interface{}{
-			"pre_push":  map[string]interface{}{"status": "completed"},
-			"push":      map[string]interface{}{"status": "completed"},
-			"post_push": map[string]interface{}{
-				"status": "failed", "error": "post-push validation failed",
-				"workflows": []map[string]interface{}{
-					{"name": "pr-check", "status": "completed", "success": false, "error": "no PR found"},
-				},
-			},
-		},
-	}
-	actJSON, _ := json.MarshalIndent(actState, "", "  ")
-	_ = os.WriteFile(filepath.Join(actDir, "state.json"), actJSON, 0644)
-	_ = os.WriteFile(filepath.Join(actDir, "logs", "post_push-pr-check.log"),
-		[]byte("Checking for PR...\nNo open PR found for branch 'feature'\n"), 0644)
-
-	output, _ := runHookflowCmd(t, []string{"git-push-status", activityID}, nil)
-
-	if !strings.Contains(output, "post-push") || !strings.Contains(output, "FAILED") {
-		t.Errorf("Expected post-push failure context in output:\n%s", output)
-	}
-}
-
-func TestGitPushStatusGitPushFailure(t *testing.T) {
-	activityID := "e2e-gitpush-fail"
-	actDir := filepath.Join(actHomeDir(), ".hookflow", "activities", activityID)
-	_ = os.MkdirAll(filepath.Join(actDir, "logs"), 0755)
-	defer func() { _ = os.RemoveAll(actDir) }()
-
-	actState := map[string]interface{}{
-		"id": activityID, "status": "failed",
-		"git_args": []string{"origin", "main"},
-		"created_at": "2024-01-01T00:00:00Z", "updated_at": "2024-01-01T00:00:02Z",
-		"phases": map[string]interface{}{
-			"pre_push": map[string]interface{}{"status": "completed"},
-			"push": map[string]interface{}{
-				"status": "failed",
-				"output": "remote: Permission denied\nfatal: could not push",
-				"error":  "exit status 128",
-			},
-		},
-	}
-	actJSON, _ := json.MarshalIndent(actState, "", "  ")
-	_ = os.WriteFile(filepath.Join(actDir, "state.json"), actJSON, 0644)
-
-	output, _ := runHookflowCmd(t, []string{"git-push-status", activityID}, nil)
-
-	if !strings.Contains(output, "git push itself failed") {
-		t.Errorf("Expected 'git push itself failed' in output:\n%s", output)
-	}
-	if !strings.Contains(output, "Permission denied") {
-		t.Errorf("Expected 'Permission denied' in output:\n%s", output)
 	}
 }
 

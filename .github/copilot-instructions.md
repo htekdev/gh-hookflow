@@ -237,22 +237,20 @@ event.git.*        → git-specific fields (message, branch, etc.)
 
 The hookflow MCP server (`gh hookflow mcp serve`) provides infrastructure for future tools. Session errors are now handled via file-based read (the agent reads `error.md` directly using `view`, no MCP tool needed).
 
-## Git Push CLI Commands
+## Git Push CLI Command
 
-Git push uses CLI commands (not MCP) because MCP server processes don't inherit the full terminal PATH:
+Git push uses a CLI command (not MCP) because MCP server processes don't inherit the full terminal PATH:
 
 | Command | Description |
 |---|---|
-| `gh hookflow git-push [args...]` | Run 3-phase push: pre-push workflows → git push → post-push workflows. Prints activity ID immediately. |
-| `gh hookflow git-push-status <id>` | Check progress of a push by activity ID. |
+| `gh hookflow git-push [args...]` | Run 3-phase push: pre-push workflows → git push → post-push workflows. Runs synchronously and prints JSON result. |
 
 ### Git Push Flow
 
 1. Agent runs `gh hookflow git-push origin main` in a shell
-2. Command prints `{ activity_id, status: "running", next_step }` immediately
-3. Push runs synchronously in the background (pre-push → push → post-push)
-4. Agent runs `gh hookflow git-push-status <activity_id>` to check progress
-5. When done: response includes full `pre_push`, `push`, `post_push` results
+2. Command runs synchronously through 3 phases (pre-push → git push → post-push)
+3. When done: prints JSON result with `status`, `pre_push`, `push`, `post_push` fields
+4. Copilot CLI handles long-running commands natively (runs in background, notifies agent on completion)
 
 ## Testing
 

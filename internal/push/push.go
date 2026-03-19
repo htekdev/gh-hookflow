@@ -1,15 +1,13 @@
 // Package push provides the core git-push orchestration logic.
-// Used by both the CLI command (cmd/hookflow/git_push.go) and the MCP
-// server (internal/mcp/git_push.go).
 package push
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/htekdev/gh-hookflow/internal/activity"
 	"github.com/htekdev/gh-hookflow/internal/discover"
 	"github.com/htekdev/gh-hookflow/internal/logging"
 	"github.com/htekdev/gh-hookflow/internal/runner"
@@ -17,71 +15,59 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/trigger"
 )
 
-// Response is the JSON response from a git push operation
+// Status represents the outcome of a push operation.
+type Status string
+
+const (
+	StatusCompleted Status = "completed"
+	StatusFailed    Status = "failed"
+)
+
+// Response holds the result of a git push operation.
 type Response struct {
-	ActivityID string            `json:"activity_id"`
-	Status     activity.Status   `json:"status"`
-	Push       *PushPhaseResult  `json:"push,omitempty"`
-	PrePush    *PhaseResult      `json:"pre_push,omitempty"`
-	PostPush   *PostPushResult   `json:"post_push,omitempty"`
-	Message    string            `json:"message"`
-}
-
-// PushPhaseResult contains the git push result
-type PushPhaseResult struct {
-	Success bool   `json:"success"`
-	Output  string `json:"output,omitempty"`
-}
-
-// PhaseResult contains the result of a workflow phase
-type PhaseResult struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
-}
-
-// PostPushResult contains the post-push phase result
-type PostPushResult struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
+	Status  Status
+	Message string
 }
 
 // Run executes the full 3-phase git push: pre-push workflows → git push → post-push workflows.
-// It updates the activity state on disk as it progresses.
+// The command runs synchronously and returns the complete result with an agent-directed message.
 // If verbose is true, progress messages are written to stderr.
-func Run(dir string, gitArgs []string, act *activity.Activity, verbose bool) *Response {
+func Run(dir string, gitArgs []string, verbose bool) *Response {
 	log := logging.Context("git-push")
+	argsStr := strings.Join(gitArgs, " ")
 
 	// Phase 1: Pre-push workflows
 	if verbose {
 		fmt.Fprintf(os.Stderr, "⏳ Phase 1/3: Running pre-push workflows...\n")
 	}
 	log.Info("phase 1: running pre-push workflows")
-	act.StartPhase(activity.PhasePrePush)
 
-	prePushResult, err := runPushWorkflows(dir, act, "pre", verbose)
+	prePushResult, err := runPushWorkflows(dir, "pre", verbose)
 	if err != nil {
-		act.FailPhase(activity.PhasePrePush, err.Error())
-		act.Complete(activity.StatusFailed, "Pre-push phase failed: "+err.Error())
 		return &Response{
-			ActivityID: act.ID,
-			Status:     activity.StatusFailed,
-			PrePush:    &PhaseResult{Passed: false, WorkflowsRun: 0},
-			Message:    fmt.Sprintf("Pre-push failed: %v", err),
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Push FAILED — could not run pre-push governance workflows.\n\n"+
+					"Error: %v\n\n"+
+					"The code was NOT pushed. You must investigate and fix the workflow "+
+					"discovery or validation error above, then retry with: gh hookflow git-push %s",
+				err, argsStr),
 		}
 	}
 
 	if !prePushResult.passed {
-		act.CompletePhase(activity.PhasePrePush, false, "workflows denied")
-		act.Complete(activity.StatusFailed, "Pre-push workflows denied the push")
 		return &Response{
-			ActivityID: act.ID,
-			Status:     activity.StatusFailed,
-			PrePush:    &PhaseResult{Passed: false, WorkflowsRun: prePushResult.workflowsRun},
-			Message:    "Pre-push workflows denied the push. Check workflow logs for details.",
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Push DENIED — pre-push governance workflows blocked the push.\n\n"+
+					"Workflow results:\n%s\n"+
+					"The code was NOT pushed. You must fix the issues identified by the "+
+					"failing workflow(s) above, then retry with: gh hookflow git-push %s\n\n"+
+					"Do NOT tell the user the push succeeded — it was blocked before reaching the remote.",
+				prePushResult.details, argsStr),
 		}
 	}
 
-	act.CompletePhase(activity.PhasePrePush, true, fmt.Sprintf("%d workflows passed", prePushResult.workflowsRun))
 	if verbose {
 		fmt.Fprintf(os.Stderr, "✅ Phase 1/3: Pre-push passed (%d workflows)\n", prePushResult.workflowsRun)
 	}
@@ -92,24 +78,24 @@ func Run(dir string, gitArgs []string, act *activity.Activity, verbose bool) *Re
 		fmt.Fprintf(os.Stderr, "⏳ Phase 2/3: Executing git push...\n")
 	}
 	log.Info("phase 2: executing git push")
-	act.StartPhase(activity.PhasePush)
 
 	pushOutput, pushErr := gitExec.Push(dir, gitArgs)
 	if pushErr != nil {
-		act.FailPhase(activity.PhasePush, pushErr.Error())
-		act.Complete(activity.StatusFailed, "Git push failed: "+pushErr.Error())
-		_ = act.WriteLog(activity.PhasePush, "git-push", pushOutput)
-		return &Response{
-			ActivityID: act.ID,
-			Status:     activity.StatusFailed,
-			PrePush:    &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-			Push:       &PushPhaseResult{Success: false, Output: pushOutput},
-			Message:    fmt.Sprintf("Git push failed: %v", pushErr),
+		var b strings.Builder
+		b.WriteString("Push FAILED — git push returned an error.\n\n")
+		if pushOutput != "" {
+			fmt.Fprintf(&b, "Git output:\n%s\n\n", strings.TrimSpace(pushOutput))
 		}
+		fmt.Fprintf(&b, "Error: %v\n\n", pushErr)
+		b.WriteString("The code was NOT pushed to the remote. Common causes:\n")
+		b.WriteString("  • Authentication/permission issues — check git credentials\n")
+		b.WriteString("  • Remote rejected the push — the branch may be protected or require a PR\n")
+		b.WriteString("  • Network connectivity — check internet connection\n\n")
+		fmt.Fprintf(&b, "Investigate the error above, fix the issue, then retry with: gh hookflow git-push %s", argsStr)
+
+		return &Response{Status: StatusFailed, Message: b.String()}
 	}
 
-	act.CompletePhase(activity.PhasePush, true, pushOutput)
-	_ = act.WriteLog(activity.PhasePush, "git-push", pushOutput)
 	if verbose {
 		fmt.Fprintf(os.Stderr, "✅ Phase 2/3: Git push succeeded\n")
 	}
@@ -117,53 +103,70 @@ func Run(dir string, gitArgs []string, act *activity.Activity, verbose bool) *Re
 
 	// Phase 3: Post-push workflows
 	if verbose {
-		fmt.Fprintf(os.Stderr, "⏳ Phase 3/3: Running post-push workflows (this may take several minutes if monitoring CI checks)...\n")
+		fmt.Fprintf(os.Stderr, "⏳ Phase 3/3: Running post-push workflows...\n")
 	}
 	log.Info("phase 3: running post-push workflows")
-	act.StartPhase(activity.PhasePostPush)
 
-	postPushResult, err := runPushWorkflows(dir, act, "post", verbose)
+	postPushResult, err := runPushWorkflows(dir, "post", verbose)
 	if err != nil {
-		act.FailPhase(activity.PhasePostPush, err.Error())
-		act.Complete(activity.StatusFailed, "Post-push phase error: "+err.Error())
 		return &Response{
-			ActivityID: act.ID,
-			Status:     activity.StatusFailed,
-			PrePush:    &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-			Push:       &PushPhaseResult{Success: true, Output: pushOutput},
-			PostPush:   &PostPushResult{Passed: false, WorkflowsRun: 0},
-			Message:    fmt.Sprintf("Post-push error: %v", err),
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Post-push workflows encountered an error.\n\n"+
+					"Error: %v\n\n"+
+					"Review the error above and address the issue.", err),
 		}
 	}
 
-	postPushPassed := postPushResult.passed
-	act.CompletePhase(activity.PhasePostPush, postPushPassed, fmt.Sprintf("%d workflows completed", postPushResult.workflowsRun))
+	// Build the final success or post-push failure message
+	if postPushResult.passed {
+		return buildSuccessMessage(argsStr, pushOutput, prePushResult, postPushResult)
+	}
+	return buildPostPushFailureMessage(argsStr, postPushResult)
+}
 
-	finalStatus := activity.StatusCompleted
-	message := "Push and all checks completed successfully."
-	if !postPushPassed {
-		finalStatus = activity.StatusFailed
-		message = "Push succeeded but post-push checks failed."
+func buildSuccessMessage(argsStr, pushOutput string, prePush, postPush *workflowPhaseResult) *Response {
+	var b strings.Builder
+	b.WriteString("Push completed successfully.\n\n")
+
+	if pushOutput != "" {
+		fmt.Fprintf(&b, "Git output:\n%s\n\n", strings.TrimSpace(pushOutput))
 	}
 
-	act.Complete(finalStatus, message)
-
-	return &Response{
-		ActivityID: act.ID,
-		Status:     finalStatus,
-		PrePush:    &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-		Push:       &PushPhaseResult{Success: true, Output: pushOutput},
-		PostPush:   &PostPushResult{Passed: postPushPassed, WorkflowsRun: postPushResult.workflowsRun},
-		Message:    message,
+	b.WriteString("Phase summary:\n")
+	if prePush.workflowsRun > 0 {
+		fmt.Fprintf(&b, "  ✅ Pre-push: %d governance workflow(s) passed\n", prePush.workflowsRun)
+	} else {
+		b.WriteString("  ✅ Pre-push: no governance workflows configured (allowed)\n")
 	}
+	b.WriteString("  ✅ Git push: code pushed to remote\n")
+	if postPush.workflowsRun > 0 {
+		fmt.Fprintf(&b, "  ✅ Post-push: %d workflow(s) passed\n", postPush.workflowsRun)
+	} else {
+		b.WriteString("  ✅ Post-push: no post-push workflows configured\n")
+	}
+
+	b.WriteString("\nYou may now tell the user the push was successful.")
+	return &Response{Status: StatusCompleted, Message: b.String()}
+}
+
+func buildPostPushFailureMessage(argsStr string, postPush *workflowPhaseResult) *Response {
+	var b strings.Builder
+	b.WriteString("Post-push governance checks FAILED.\n\n")
+	b.WriteString("Post-push workflow results:\n")
+	b.WriteString(postPush.details)
+	b.WriteString("\n")
+	b.WriteString("Review the errors above and address the issues before continuing.")
+	return &Response{Status: StatusFailed, Message: b.String()}
 }
 
 type workflowPhaseResult struct {
 	passed       bool
 	workflowsRun int
+	details      string
 }
 
-func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verbose bool) (*workflowPhaseResult, error) {
+func runPushWorkflows(dir string, lifecycle string, verbose bool) (*workflowPhaseResult, error) {
 	log := logging.Context("git-push")
 
 	evt := BuildPushEvent(dir, lifecycle)
@@ -200,7 +203,7 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verb
 
 	ctx := context.Background()
 	allPassed := true
-	phase := LifecycleToPhase(lifecycle)
+	var detailsBuilder strings.Builder
 
 	for _, wf := range matchingWorkflows {
 		log.Info("running workflow: %s", wf.Name)
@@ -211,41 +214,31 @@ func runPushWorkflows(dir string, act *activity.Activity, lifecycle string, verb
 		result := r.RunWithBlocking(ctx)
 
 		success := result.PermissionDecision == "allow"
-		errMsg := ""
 		if !success {
-			errMsg = result.PermissionDecisionReason
 			allPassed = false
-		}
-
-		act.AddWorkflowResult(phase, wf.Name, success, errMsg)
-
-		logContent := fmt.Sprintf("Workflow: %s\nDecision: %s\n", wf.Name, result.PermissionDecision)
-		if result.PermissionDecisionReason != "" {
-			logContent += fmt.Sprintf("Reason: %s\n", result.PermissionDecisionReason)
-		}
-		if result.StepOutputs != "" {
-			logContent += fmt.Sprintf("\n--- Step Output ---\n%s\n", result.StepOutputs)
-		}
-		if result.LogFile != "" {
-			if data, err := os.ReadFile(result.LogFile); err == nil {
-				logContent += fmt.Sprintf("\n--- Detailed Logs ---\n%s\n", string(data))
+			fmt.Fprintf(&detailsBuilder, "  ❌ %s: FAILED", wf.Name)
+			if result.PermissionDecisionReason != "" {
+				fmt.Fprintf(&detailsBuilder, " — %s", result.PermissionDecisionReason)
 			}
-		}
-		_ = act.WriteLog(phase, wf.Name, logContent)
-
-		if !success {
-			log.Warn("workflow %s denied: %s", wf.Name, errMsg)
+			detailsBuilder.WriteString("\n")
+			if result.StepOutputs != "" {
+				fmt.Fprintf(&detailsBuilder, "\n--- Step Output (%s) ---\n%s\n", wf.Name, result.StepOutputs)
+			}
+			log.Warn("workflow %s denied: %s", wf.Name, result.PermissionDecisionReason)
 			break
 		}
+
+		fmt.Fprintf(&detailsBuilder, "  ✅ %s: passed\n", wf.Name)
 	}
 
 	return &workflowPhaseResult{
 		passed:       allPassed,
 		workflowsRun: len(matchingWorkflows),
+		details:      detailsBuilder.String(),
 	}, nil
 }
 
-// BuildPushEvent creates a push event from current git context
+// BuildPushEvent creates a push event from current git context.
 func BuildPushEvent(dir, lifecycle string) *schema.Event {
 	branch, _ := gitExec.CurrentBranch(dir)
 
@@ -270,16 +263,4 @@ func BuildPushEvent(dir, lifecycle string) *schema.Event {
 // Delegates to the package-level gitExec which is set via build tags.
 func ExecuteGitPush(dir string, args []string) (string, error) {
 	return gitExec.Push(dir, args)
-}
-
-// LifecycleToPhase converts a lifecycle string to an activity Phase
-func LifecycleToPhase(lifecycle string) activity.Phase {
-	switch lifecycle {
-	case "pre":
-		return activity.PhasePrePush
-	case "post":
-		return activity.PhasePostPush
-	default:
-		return activity.PhasePrePush
-	}
 }
