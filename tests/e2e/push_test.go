@@ -145,11 +145,11 @@ steps:
 		},
 	)
 
-	if !strings.Contains(output, "post-push") || !strings.Contains(output, "FAILED") {
-		t.Errorf("expected post-push failure message, got:\n%s", output)
+	if !strings.Contains(output, "FAILED") {
+		t.Errorf("expected FAILED in output, got:\n%s", output)
 	}
-	if !strings.Contains(output, "IS on the remote") {
-		t.Errorf("expected clarification that push succeeded, got:\n%s", output)
+	if !strings.Contains(output, "Review the errors") {
+		t.Errorf("expected remediation direction, got:\n%s", output)
 	}
 }
 

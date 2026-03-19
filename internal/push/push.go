@@ -112,12 +112,9 @@ func Run(dir string, gitArgs []string, verbose bool) *Response {
 		return &Response{
 			Status: StatusFailed,
 			Message: fmt.Sprintf(
-				"Push SUCCEEDED but post-push workflows encountered an error.\n\n"+
-					"The code IS on the remote — the push itself worked. However, "+
-					"post-push governance workflows could not run:\n\n"+
+				"Post-push workflows encountered an error.\n\n"+
 					"Error: %v\n\n"+
-					"Tell the user the push went through, but post-push checks could not "+
-					"be verified. They should check CI status manually.", err),
+					"Review the error above and address the issue.", err),
 		}
 	}
 
@@ -155,18 +152,11 @@ func buildSuccessMessage(argsStr, pushOutput string, prePush, postPush *workflow
 
 func buildPostPushFailureMessage(argsStr string, postPush *workflowPhaseResult) *Response {
 	var b strings.Builder
-	b.WriteString("Push SUCCEEDED but post-push governance checks FAILED.\n\n")
-	b.WriteString("IMPORTANT: The code IS on the remote — the push itself worked. ")
-	b.WriteString("The failure is in post-push validation only.\n\n")
+	b.WriteString("Post-push governance checks FAILED.\n\n")
 	b.WriteString("Post-push workflow results:\n")
 	b.WriteString(postPush.details)
 	b.WriteString("\n")
-	b.WriteString("You must investigate the post-push failures above. These typically indicate:\n")
-	b.WriteString("  • CI checks that need attention\n")
-	b.WriteString("  • Missing PR for the branch\n")
-	b.WriteString("  • Policy violations that should be addressed in a follow-up commit\n\n")
-	b.WriteString("Tell the user the push went through but post-push checks failed, ")
-	b.WriteString("and explain what needs to be fixed.")
+	b.WriteString("Review the errors above and address the issues before continuing.")
 	return &Response{Status: StatusFailed, Message: b.String()}
 }
 
