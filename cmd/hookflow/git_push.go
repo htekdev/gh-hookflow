@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -20,7 +19,7 @@ This command runs synchronously through 3 phases:
 2. Git push
 3. Post-push governance workflows
 
-The command blocks until all phases complete and prints the result as JSON.
+The command blocks until all phases complete and prints the result.
 Copilot CLI handles long-running commands natively, so no polling is needed.
 
 Examples:
@@ -63,18 +62,13 @@ func runGitPush(dir string, gitArgs []string, verbose bool) error {
 
 	resp := push.Run(dir, gitArgs, verbose)
 
-	// Output the result as JSON
-	data, err := json.MarshalIndent(resp, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal response: %w", err)
-	}
-	fmt.Println(string(data))
+	fmt.Println(resp.Message)
 
 	if resp.Status == push.StatusFailed {
-		log.Warn("push failed: %s", resp.Message)
+		log.Warn("push failed")
 		return fmt.Errorf("push failed")
 	}
 
-	log.Info("push completed: %s", resp.Message)
+	log.Info("push completed successfully")
 	return nil
 }

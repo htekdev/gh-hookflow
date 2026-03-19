@@ -51,26 +51,17 @@ func TestResponseStatusConstants(t *testing.T) {
 	}
 }
 
-func TestResponseSerialization(t *testing.T) {
+func TestResponseFields(t *testing.T) {
 	resp := &Response{
-		Status:   StatusCompleted,
-		PrePush:  &PhaseResult{Passed: true, WorkflowsRun: 2},
-		Push:     &PushPhaseResult{Success: true, Output: "Everything up-to-date"},
-		PostPush: &PostPushResult{Passed: true, WorkflowsRun: 1},
-		Message:  "Push and all checks completed successfully.",
+		Status:  StatusCompleted,
+		Message: "Push completed successfully.",
 	}
 
 	if resp.Status != StatusCompleted {
 		t.Errorf("expected status 'completed', got %q", resp.Status)
 	}
-	if !resp.PrePush.Passed {
-		t.Error("expected pre_push.passed = true")
-	}
-	if !resp.Push.Success {
-		t.Error("expected push.success = true")
-	}
-	if !resp.PostPush.Passed {
-		t.Error("expected post_push.passed = true")
+	if resp.Message == "" {
+		t.Error("expected non-empty message")
 	}
 }
 

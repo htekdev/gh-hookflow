@@ -1,51 +1,9 @@
 package e2e
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
-
-// pushResponse mirrors the JSON structure from push.Response.
-type pushResponse struct {
-	Status   string          `json:"status"`
-	Push     *pushPhaseJSON  `json:"push,omitempty"`
-	PrePush  *phaseJSON      `json:"pre_push,omitempty"`
-	PostPush *postPushJSON   `json:"post_push,omitempty"`
-	Message  string          `json:"message"`
-}
-
-type pushPhaseJSON struct {
-	Success bool   `json:"success"`
-	Output  string `json:"output,omitempty"`
-}
-
-type phaseJSON struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
-}
-
-type postPushJSON struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
-}
-
-func parsePushResponse(t *testing.T, output string) *pushResponse {
-	t.Helper()
-
-	// The JSON output may be preceded by stderr progress messages; find the JSON object
-	start := strings.Index(output, "{")
-	if start < 0 {
-		t.Fatalf("no JSON object found in output:\n%s", output)
-	}
-	jsonStr := output[start:]
-
-	var resp pushResponse
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
-		t.Fatalf("failed to parse push response JSON: %v\nOutput:\n%s", err, jsonStr)
-	}
-	return &resp
-}
 
 // TestPushSuccessfulNoWorkflows tests the full 3-phase push flow with no workflows.
 func TestPushSuccessfulNoWorkflows(t *testing.T) {
@@ -62,12 +20,11 @@ func TestPushSuccessfulNoWorkflows(t *testing.T) {
 		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	resp := parsePushResponse(t, output)
-	if resp.Status != "completed" {
-		t.Errorf("expected status completed, got %s", resp.Status)
+	if !strings.Contains(output, "Push completed successfully") {
+		t.Errorf("expected success message, got:\n%s", output)
 	}
-	if resp.Push == nil || !resp.Push.Success {
-		t.Error("expected push.success = true")
+	if !strings.Contains(output, "tell the user the push was successful") {
+		t.Errorf("expected agent direction to inform user, got:\n%s", output)
 	}
 }
 
@@ -95,15 +52,14 @@ steps:
 		},
 	)
 
-	resp := parsePushResponse(t, output)
-	if resp.Status != "failed" {
-		t.Errorf("expected status failed, got %s", resp.Status)
+	if !strings.Contains(output, "DENIED") {
+		t.Errorf("expected DENIED in output, got:\n%s", output)
 	}
-	if resp.PrePush == nil || resp.PrePush.Passed {
-		t.Error("expected pre_push.passed = false")
+	if !strings.Contains(output, "NOT pushed") {
+		t.Errorf("expected 'NOT pushed' in output, got:\n%s", output)
 	}
-	if resp.Message == "" {
-		t.Error("expected non-empty message on failure")
+	if !strings.Contains(output, "fix the issues") {
+		t.Errorf("expected remediation direction, got:\n%s", output)
 	}
 }
 
@@ -120,15 +76,14 @@ func TestPushGitFailure(t *testing.T) {
 		},
 	)
 
-	resp := parsePushResponse(t, output)
-	if resp.Status != "failed" {
-		t.Errorf("expected status failed, got %s", resp.Status)
+	if !strings.Contains(output, "FAILED") {
+		t.Errorf("expected FAILED in output, got:\n%s", output)
 	}
-	if resp.Push == nil || resp.Push.Success {
-		t.Error("expected push.success = false")
+	if !strings.Contains(output, "NOT pushed") {
+		t.Errorf("expected 'NOT pushed' in output, got:\n%s", output)
 	}
-	if !strings.Contains(resp.Message, "push failed") && !strings.Contains(resp.Message, "Git push failed") {
-		t.Errorf("expected message to mention push failure, got: %s", resp.Message)
+	if !strings.Contains(output, "Investigate") {
+		t.Errorf("expected investigation direction, got:\n%s", output)
 	}
 }
 
@@ -158,16 +113,15 @@ steps:
 		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	resp := parsePushResponse(t, output)
-	if resp.Status != "completed" {
-		t.Errorf("expected status completed, got %s (message: %s)", resp.Status, resp.Message)
+	if !strings.Contains(output, "Push completed successfully") {
+		t.Errorf("expected success message, got:\n%s", output)
 	}
-	if resp.PostPush == nil || resp.PostPush.WorkflowsRun < 1 {
-		t.Error("expected post_push.workflows_run >= 1")
+	if !strings.Contains(output, "Post-push") {
+		t.Errorf("expected post-push summary, got:\n%s", output)
 	}
 }
 
-// TestPushPostPushFailure tests that post-push failure is recorded correctly.
+// TestPushPostPushFailure tests that post-push failure is reported correctly.
 func TestPushPostPushFailure(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{
 		"post-push-check.yml": `name: Post Push Check
@@ -191,23 +145,16 @@ steps:
 		},
 	)
 
-	resp := parsePushResponse(t, output)
-	if resp.Status != "failed" {
-		t.Errorf("expected status failed, got %s", resp.Status)
+	if !strings.Contains(output, "post-push") || !strings.Contains(output, "FAILED") {
+		t.Errorf("expected post-push failure message, got:\n%s", output)
 	}
-	if resp.Push == nil || !resp.Push.Success {
-		t.Error("expected push.success = true (push itself succeeded)")
-	}
-	if resp.PostPush == nil || resp.PostPush.Passed {
-		t.Error("expected post_push.passed = false")
-	}
-	if !strings.Contains(resp.Message, "post-push") {
-		t.Errorf("expected message to mention post-push, got: %s", resp.Message)
+	if !strings.Contains(output, "IS on the remote") {
+		t.Errorf("expected clarification that push succeeded, got:\n%s", output)
 	}
 }
 
-// TestPushJSONOutputStructure verifies the JSON response has all expected fields.
-func TestPushJSONOutputStructure(t *testing.T) {
+// TestPushOutputContainsAgentDirection verifies the output includes actionable guidance.
+func TestPushOutputContainsAgentDirection(t *testing.T) {
 	workspace := setupWorkspaceWithHookflows(t, map[string]string{})
 
 	output, err := runHookflowCmd(t,
@@ -221,21 +168,10 @@ func TestPushJSONOutputStructure(t *testing.T) {
 		t.Fatalf("git-push failed: %v\nOutput: %s", err, output)
 	}
 
-	resp := parsePushResponse(t, output)
-
-	if resp.Status != "completed" && resp.Status != "failed" {
-		t.Errorf("expected status 'completed' or 'failed', got %q", resp.Status)
+	if !strings.Contains(output, "Phase summary") {
+		t.Errorf("expected phase summary in output, got:\n%s", output)
 	}
-	if resp.Message == "" {
-		t.Error("expected non-empty message")
-	}
-	if resp.Push == nil {
-		t.Error("expected push field to be present")
-	}
-	if resp.PrePush == nil {
-		t.Error("expected pre_push field to be present")
-	}
-	if resp.PostPush == nil {
-		t.Error("expected post_push field to be present")
+	if !strings.Contains(output, "tell the user") {
+		t.Errorf("expected agent direction in output, got:\n%s", output)
 	}
 }

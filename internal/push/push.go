@@ -23,38 +23,18 @@ const (
 	StatusFailed    Status = "failed"
 )
 
-// Response is the JSON response from a git push operation.
+// Response holds the result of a git push operation.
 type Response struct {
-	Status   Status           `json:"status"`
-	Push     *PushPhaseResult `json:"push,omitempty"`
-	PrePush  *PhaseResult     `json:"pre_push,omitempty"`
-	PostPush *PostPushResult  `json:"post_push,omitempty"`
-	Message  string           `json:"message"`
-}
-
-// PushPhaseResult contains the git push result.
-type PushPhaseResult struct {
-	Success bool   `json:"success"`
-	Output  string `json:"output,omitempty"`
-}
-
-// PhaseResult contains the result of a workflow phase.
-type PhaseResult struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
-}
-
-// PostPushResult contains the post-push phase result.
-type PostPushResult struct {
-	Passed       bool `json:"passed"`
-	WorkflowsRun int  `json:"workflows_run"`
+	Status  Status
+	Message string
 }
 
 // Run executes the full 3-phase git push: pre-push workflows → git push → post-push workflows.
-// The command runs synchronously and returns the complete result.
+// The command runs synchronously and returns the complete result with an agent-directed message.
 // If verbose is true, progress messages are written to stderr.
 func Run(dir string, gitArgs []string, verbose bool) *Response {
 	log := logging.Context("git-push")
+	argsStr := strings.Join(gitArgs, " ")
 
 	// Phase 1: Pre-push workflows
 	if verbose {
@@ -65,17 +45,26 @@ func Run(dir string, gitArgs []string, verbose bool) *Response {
 	prePushResult, err := runPushWorkflows(dir, "pre", verbose)
 	if err != nil {
 		return &Response{
-			Status:  StatusFailed,
-			PrePush: &PhaseResult{Passed: false, WorkflowsRun: 0},
-			Message: fmt.Sprintf("Pre-push failed: %v", err),
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Push FAILED — could not run pre-push governance workflows.\n\n"+
+					"Error: %v\n\n"+
+					"The code was NOT pushed. You must investigate and fix the workflow "+
+					"discovery or validation error above, then retry with: gh hookflow git-push %s",
+				err, argsStr),
 		}
 	}
 
 	if !prePushResult.passed {
 		return &Response{
-			Status:  StatusFailed,
-			PrePush: &PhaseResult{Passed: false, WorkflowsRun: prePushResult.workflowsRun},
-			Message: "Pre-push workflows denied the push.\n\n" + prePushResult.details,
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Push DENIED — pre-push governance workflows blocked the push.\n\n"+
+					"Workflow results:\n%s\n"+
+					"The code was NOT pushed. You must fix the issues identified by the "+
+					"failing workflow(s) above, then retry with: gh hookflow git-push %s\n\n"+
+					"Do NOT tell the user the push succeeded — it was blocked before reaching the remote.",
+				prePushResult.details, argsStr),
 		}
 	}
 
@@ -92,12 +81,19 @@ func Run(dir string, gitArgs []string, verbose bool) *Response {
 
 	pushOutput, pushErr := gitExec.Push(dir, gitArgs)
 	if pushErr != nil {
-		return &Response{
-			Status:  StatusFailed,
-			PrePush: &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-			Push:    &PushPhaseResult{Success: false, Output: pushOutput},
-			Message: fmt.Sprintf("Git push failed: %v\n\nOutput:\n%s", pushErr, pushOutput),
+		var b strings.Builder
+		b.WriteString("Push FAILED — git push returned an error.\n\n")
+		if pushOutput != "" {
+			fmt.Fprintf(&b, "Git output:\n%s\n\n", strings.TrimSpace(pushOutput))
 		}
+		fmt.Fprintf(&b, "Error: %v\n\n", pushErr)
+		b.WriteString("The code was NOT pushed to the remote. Common causes:\n")
+		b.WriteString("  • Authentication/permission issues — check git credentials\n")
+		b.WriteString("  • Remote rejected the push — the branch may be protected or require a PR\n")
+		b.WriteString("  • Network connectivity — check internet connection\n\n")
+		fmt.Fprintf(&b, "Investigate the error above, fix the issue, then retry with: gh hookflow git-push %s", argsStr)
+
+		return &Response{Status: StatusFailed, Message: b.String()}
 	}
 
 	if verbose {
@@ -114,30 +110,64 @@ func Run(dir string, gitArgs []string, verbose bool) *Response {
 	postPushResult, err := runPushWorkflows(dir, "post", verbose)
 	if err != nil {
 		return &Response{
-			Status:   StatusFailed,
-			PrePush:  &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-			Push:     &PushPhaseResult{Success: true, Output: pushOutput},
-			PostPush: &PostPushResult{Passed: false, WorkflowsRun: 0},
-			Message:  fmt.Sprintf("Post-push error: %v", err),
+			Status: StatusFailed,
+			Message: fmt.Sprintf(
+				"Push SUCCEEDED but post-push workflows encountered an error.\n\n"+
+					"The code IS on the remote — the push itself worked. However, "+
+					"post-push governance workflows could not run:\n\n"+
+					"Error: %v\n\n"+
+					"Tell the user the push went through, but post-push checks could not "+
+					"be verified. They should check CI status manually.", err),
 		}
 	}
 
-	postPushPassed := postPushResult.passed
+	// Build the final success or post-push failure message
+	if postPushResult.passed {
+		return buildSuccessMessage(argsStr, pushOutput, prePushResult, postPushResult)
+	}
+	return buildPostPushFailureMessage(argsStr, postPushResult)
+}
 
-	finalStatus := StatusCompleted
-	message := "Push and all checks completed successfully."
-	if !postPushPassed {
-		finalStatus = StatusFailed
-		message = "Push succeeded but post-push checks failed.\n\n" + postPushResult.details
+func buildSuccessMessage(argsStr, pushOutput string, prePush, postPush *workflowPhaseResult) *Response {
+	var b strings.Builder
+	b.WriteString("Push completed successfully.\n\n")
+
+	if pushOutput != "" {
+		fmt.Fprintf(&b, "Git output:\n%s\n\n", strings.TrimSpace(pushOutput))
 	}
 
-	return &Response{
-		Status:   finalStatus,
-		PrePush:  &PhaseResult{Passed: true, WorkflowsRun: prePushResult.workflowsRun},
-		Push:     &PushPhaseResult{Success: true, Output: pushOutput},
-		PostPush: &PostPushResult{Passed: postPushPassed, WorkflowsRun: postPushResult.workflowsRun},
-		Message:  message,
+	b.WriteString("Phase summary:\n")
+	if prePush.workflowsRun > 0 {
+		fmt.Fprintf(&b, "  ✅ Pre-push: %d governance workflow(s) passed\n", prePush.workflowsRun)
+	} else {
+		b.WriteString("  ✅ Pre-push: no governance workflows configured (allowed)\n")
 	}
+	b.WriteString("  ✅ Git push: code pushed to remote\n")
+	if postPush.workflowsRun > 0 {
+		fmt.Fprintf(&b, "  ✅ Post-push: %d workflow(s) passed\n", postPush.workflowsRun)
+	} else {
+		b.WriteString("  ✅ Post-push: no post-push workflows configured\n")
+	}
+
+	b.WriteString("\nYou may now tell the user the push was successful.")
+	return &Response{Status: StatusCompleted, Message: b.String()}
+}
+
+func buildPostPushFailureMessage(argsStr string, postPush *workflowPhaseResult) *Response {
+	var b strings.Builder
+	b.WriteString("Push SUCCEEDED but post-push governance checks FAILED.\n\n")
+	b.WriteString("IMPORTANT: The code IS on the remote — the push itself worked. ")
+	b.WriteString("The failure is in post-push validation only.\n\n")
+	b.WriteString("Post-push workflow results:\n")
+	b.WriteString(postPush.details)
+	b.WriteString("\n")
+	b.WriteString("You must investigate the post-push failures above. These typically indicate:\n")
+	b.WriteString("  • CI checks that need attention\n")
+	b.WriteString("  • Missing PR for the branch\n")
+	b.WriteString("  • Policy violations that should be addressed in a follow-up commit\n\n")
+	b.WriteString("Tell the user the push went through but post-push checks failed, ")
+	b.WriteString("and explain what needs to be fixed.")
+	return &Response{Status: StatusFailed, Message: b.String()}
 }
 
 type workflowPhaseResult struct {
