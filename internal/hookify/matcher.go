@@ -50,9 +50,28 @@ func matchEventType(eventType string, event *schema.Event) bool {
 		}
 		return false
 
-	case EventStop, EventPrompt:
-		// Deferred — hookflow doesn't have stop/prompt hooks
-		return false
+	case EventStop:
+		// "stop" is an alias for agentStop and subagentStop
+		if event.Hook == nil {
+			return false
+		}
+		return StopAliasEvents[event.Hook.Type]
+
+	case EventPrompt:
+		// "prompt" maps to userPromptSubmitted
+		if event.Hook == nil {
+			return false
+		}
+		return event.Hook.Type == "userPromptSubmitted"
+
+	// Direct Copilot CLI hook event type matching (1:1)
+	case EventSessionStart, EventSessionEnd, EventPreToolUse, EventPostToolUse,
+		EventPostToolUseFail, EventAgentStop, EventSubagentStart, EventSubagentStop,
+		EventPermissionRequest, EventNotification, EventPreCompact, EventErrorOccurred:
+		if event.Hook == nil {
+			return false
+		}
+		return event.Hook.Type == eventType
 
 	default:
 		return false

@@ -100,8 +100,14 @@ func validateRule(rule *Rule) error {
 	if rule.Action != "" && !ValidActions[rule.Action] {
 		return fmt.Errorf("hookify rule %q has invalid action: %q", rule.Name, rule.Action)
 	}
-	if rule.Pattern == "" && len(rule.Conditions) == 0 {
-		return fmt.Errorf("hookify rule %q must have either pattern or conditions", rule.Name)
+
+	// Events in NoConditionEvents can omit pattern/conditions (pure-event trigger).
+	// Traditional events (bash, file) require pattern or conditions for filtering.
+	needsCondition := !NoConditionEvents[rule.Event]
+	if needsCondition {
+		if rule.Pattern == "" && len(rule.Conditions) == 0 {
+			return fmt.Errorf("hookify rule %q must have either pattern or conditions", rule.Name)
+		}
 	}
 	if rule.Pattern != "" && len(rule.Conditions) > 0 {
 		return fmt.Errorf("hookify rule %q cannot have both pattern and conditions", rule.Name)

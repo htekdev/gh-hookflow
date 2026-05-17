@@ -1,6 +1,7 @@
 package hookify
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +41,31 @@ func Evaluate(rule *Rule, event *schema.Event, sessionDir string) *schema.Workfl
 			PermissionDecision:       "allow",
 			PermissionDecisionReason: reason,
 		}
+	case ActionInject:
+		// Inject additionalContext into the hook response.
+		// Used for subagentStart, notification, sessionStart to provide
+		// governance instructions or context to the agent.
+		return &schema.WorkflowResult{
+			PermissionDecision:       "allow",
+			PermissionDecisionReason: reason,
+			AdditionalContext:        reason,
+		}
+	case ActionModify:
+		// Modify tool args. The message body contains the modification instructions.
+		// For preToolUse, this allows rewriting tool arguments.
+		return &schema.WorkflowResult{
+			PermissionDecision:       "allow",
+			PermissionDecisionReason: reason,
+			AdditionalContext:        reason,
+		}
+	case ActionContinue:
+		// Force the agent to continue instead of stopping.
+		// Used for agentStop to override the stop decision.
+		return &schema.WorkflowResult{
+			PermissionDecision:       "deny",
+			PermissionDecisionReason: reason,
+			ContinueAgent:           true,
+		}
 	default:
 		// Default to warn
 		return &schema.WorkflowResult{
@@ -64,6 +90,22 @@ func extractField(field string, event *schema.Event, sessionDir string) string {
 		return extractContent(event)
 	case FieldTranscript:
 		return readTranscriptContent(sessionDir)
+	case FieldToolName:
+		return extractToolName(event)
+	case FieldToolArgs:
+		return extractToolArgsJSON(event)
+	case FieldAgentName:
+		return extractAgentName(event)
+	case FieldAgentType:
+		return extractAgentType(event)
+	case FieldMessage:
+		return extractMessage(event)
+	case FieldHookEvent:
+		return extractHookEventType(event)
+	case FieldSessionID:
+		return extractSessionID(event)
+	case FieldToolResult:
+		return extractToolResult(event)
 	default:
 		return ""
 	}
@@ -156,6 +198,131 @@ func readTranscriptContent(sessionDir string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// extractToolName returns the tool name from the event.
+func extractToolName(event *schema.Event) string {
+	if event.Tool != nil {
+		return event.Tool.Name
+	}
+	if event.Hook != nil && event.Hook.Tool != nil {
+		return event.Hook.Tool.Name
+	}
+	return ""
+}
+
+// extractToolArgsJSON returns all tool args as a JSON string for regex matching.
+func extractToolArgsJSON(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil || len(args) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(args)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// extractAgentName extracts the agent name from subagentStart/subagentStop events.
+func extractAgentName(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	// subagentStart sends agentName in the hook payload
+	if v, ok := args["agentName"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	if v, ok := args["agent_name"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// extractAgentType extracts the agent type from subagentStart events.
+func extractAgentType(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	if v, ok := args["agentType"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	if v, ok := args["agent_type"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// extractMessage extracts the message from notification or error events.
+func extractMessage(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	for _, key := range []string{"message", "error", "errorMessage", "description"} {
+		if v, ok := args[key]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// extractHookEventType returns the Copilot CLI hook event type (e.g., "preToolUse").
+func extractHookEventType(event *schema.Event) string {
+	if event.Hook != nil {
+		return event.Hook.Type
+	}
+	return ""
+}
+
+// extractSessionID returns the session identifier from the event.
+func extractSessionID(event *schema.Event) string {
+	if event.SessionID != "" {
+		return event.SessionID
+	}
+	return ""
+}
+
+// extractToolResult extracts the tool result content for postToolUse events.
+func extractToolResult(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	if v, ok := args["toolResult"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		// toolResult might be a nested object — marshal to JSON
+		data, err := json.Marshal(v)
+		if err == nil {
+			return string(data)
+		}
+	}
+	return ""
+}
+
+// getToolArgs returns tool args, checking both Tool and Hook.Tool.
+func getToolArgs(event *schema.Event) map[string]interface{} {
+	if event.Tool != nil && event.Tool.Args != nil {
+		return event.Tool.Args
+	}
+	if event.Hook != nil && event.Hook.Tool != nil && event.Hook.Tool.Args != nil {
+		return event.Hook.Tool.Args
+	}
+	return nil
 }
 
 // evaluateCondition applies the operator to check if fieldValue matches the pattern.
