@@ -101,6 +101,19 @@ func validateRule(rule *Rule) error {
 		return fmt.Errorf("hookify rule %q has invalid action: %q", rule.Name, rule.Action)
 	}
 
+	// Validate modify action has required fields
+	if rule.Action == ActionModify {
+		if rule.ModifyTarget == "" {
+			return fmt.Errorf("hookify rule %q with action %q requires modify_target field", rule.Name, ActionModify)
+		}
+		if rule.ModifyStrategy == "" {
+			return fmt.Errorf("hookify rule %q with action %q requires modify_strategy field", rule.Name, ActionModify)
+		}
+		if !ValidModifyStrategies[rule.ModifyStrategy] {
+			return fmt.Errorf("hookify rule %q has invalid modify_strategy: %q (must be prepend, append, replace, or regex)", rule.Name, rule.ModifyStrategy)
+		}
+	}
+
 	// Events in NoConditionEvents can omit pattern/conditions (pure-event trigger).
 	// Traditional events (bash, file) require pattern or conditions for filtering.
 	needsCondition := !NoConditionEvents[rule.Event]

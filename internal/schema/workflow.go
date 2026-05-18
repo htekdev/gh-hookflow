@@ -223,12 +223,14 @@ type FileStatus struct {
 
 // WorkflowResult represents the outcome of running a workflow
 type WorkflowResult struct {
-	PermissionDecision       string `json:"permissionDecision"` // allow, deny
-	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
-	LogFile                  string `json:"logFile,omitempty"`    // Path to detailed log file
-	StepOutputs              string `json:"stepOutputs,omitempty"` // Combined step output for logging
-	AdditionalContext        string `json:"additionalContext,omitempty"` // Context injection for subagentStart, notification, sessionStart
-	ContinueAgent            bool   `json:"continueAgent,omitempty"`    // Force agent to continue (for agentStop override)
+	PermissionDecision       string                 `json:"permissionDecision"` // allow, deny
+	PermissionDecisionReason string                 `json:"permissionDecisionReason,omitempty"`
+	LogFile                  string                 `json:"logFile,omitempty"`    // Path to detailed log file
+	StepOutputs              string                 `json:"stepOutputs,omitempty"` // Combined step output for logging
+	AdditionalContext        string                 `json:"additionalContext,omitempty"` // Context injection for subagentStart, notification, sessionStart
+	ContinueAgent            bool                   `json:"continueAgent,omitempty"`    // Force agent to continue (for agentStop override)
+	ContinuePrompt           string                 `json:"continuePrompt,omitempty"`   // The prompt to respond with when continuing
+	ModifiedArgs             map[string]interface{} `json:"modifiedArgs,omitempty"`     // Rewritten tool arguments (for preToolUse modify)
 }
 
 // NewAllowResult creates an allow result

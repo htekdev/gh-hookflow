@@ -874,3 +874,325 @@ func TestEvaluate_EmptyFieldValue(t *testing.T) {
 		t.Error("expected nil result when field value is empty and pattern is 'test'")
 	}
 }
+
+// --- Action type tests: inject, modify, continue ---
+
+func TestEvaluate_InjectAction(t *testing.T) {
+	rule := &Rule{
+		Name:   "inject-governance",
+		Action: ActionInject,
+		Conditions: []Condition{
+			{Field: FieldAgentName, Operator: OpContains, Pattern: "coding"},
+		},
+		Message: "You must follow the repo conventions. Never commit secrets.",
+	}
+	event := &schema.Event{
+		Hook: &schema.HookEvent{
+			Type: "subagentStart",
+			Tool: &schema.ToolEvent{
+				Name: "task",
+				Args: map[string]interface{}{"agentName": "coding-agent"},
+			},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for inject action")
+	}
+	if result.PermissionDecision != "allow" {
+		t.Errorf("inject should allow, got %q", result.PermissionDecision)
+	}
+	if result.AdditionalContext != "You must follow the repo conventions. Never commit secrets." {
+		t.Errorf("inject AdditionalContext = %q, want rule message", result.AdditionalContext)
+	}
+	if result.PermissionDecisionReason != `Hookify rule "inject-governance" injected context` {
+		t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+	}
+}
+
+func TestEvaluate_InjectAction_NoConditions(t *testing.T) {
+	// Inject with no conditions fires on every matching event (lifecycle hook)
+	rule := &Rule{
+		Name:       "session-inject",
+		Action:     ActionInject,
+		Conditions: []Condition{},
+		Message:    "Welcome! Remember to write tests.",
+	}
+	event := &schema.Event{}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected inject to fire with no conditions")
+	}
+	if result.AdditionalContext != "Welcome! Remember to write tests." {
+		t.Errorf("unexpected AdditionalContext: %q", result.AdditionalContext)
+	}
+}
+
+func TestEvaluate_ContinueAction(t *testing.T) {
+	rule := &Rule{
+		Name:   "force-continue",
+		Action: ActionContinue,
+		Conditions: []Condition{
+			{Field: FieldMessage, Operator: OpContains, Pattern: "task incomplete"},
+		},
+		Message: "You're not done yet. Continue working on the remaining items.",
+	}
+	event := &schema.Event{
+		Hook: &schema.HookEvent{
+			Type: "agentStop",
+			Tool: &schema.ToolEvent{
+				Name: "agentStop",
+				Args: map[string]interface{}{"message": "task incomplete, but stopping"},
+			},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for continue action")
+	}
+	if result.PermissionDecision != "deny" {
+		t.Errorf("continue should deny (prevent stop), got %q", result.PermissionDecision)
+	}
+	if !result.ContinueAgent {
+		t.Error("ContinueAgent should be true")
+	}
+	if result.ContinuePrompt != "You're not done yet. Continue working on the remaining items." {
+		t.Errorf("ContinuePrompt = %q, want the rule message body", result.ContinuePrompt)
+	}
+	if result.PermissionDecisionReason != `Hookify rule "force-continue" forced continuation` {
+		t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+	}
+}
+
+func TestEvaluate_ContinueAction_NoMatch(t *testing.T) {
+	rule := &Rule{
+		Name:   "force-continue",
+		Action: ActionContinue,
+		Conditions: []Condition{
+			{Field: FieldMessage, Operator: OpContains, Pattern: "task incomplete"},
+		},
+		Message: "Keep going.",
+	}
+	event := &schema.Event{
+		Hook: &schema.HookEvent{
+			Type: "agentStop",
+			Tool: &schema.ToolEvent{
+				Name: "agentStop",
+				Args: map[string]interface{}{"message": "all done successfully"},
+			},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result != nil {
+		t.Error("expected nil result when conditions don't match")
+	}
+}
+
+func TestEvaluate_ModifyAction_Replace(t *testing.T) {
+	rule := &Rule{
+		Name:           "sanitize-path",
+		Action:         ActionModify,
+		ModifyTarget:   "path",
+		ModifyStrategy: StrategyReplace,
+		Conditions: []Condition{
+			{Field: FieldToolName, Operator: OpEquals, Pattern: "create"},
+		},
+		Message: "/safe/path/output.txt",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "create",
+			Args: map[string]interface{}{
+				"path":      "/dangerous/path/file.txt",
+				"file_text": "hello world",
+			},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for modify action")
+	}
+	if result.PermissionDecision != "allow" {
+		t.Errorf("modify should allow, got %q", result.PermissionDecision)
+	}
+	if result.ModifiedArgs == nil {
+		t.Fatal("ModifiedArgs should not be nil")
+	}
+	if result.ModifiedArgs["path"] != "/safe/path/output.txt" {
+		t.Errorf("expected replaced path, got %q", result.ModifiedArgs["path"])
+	}
+	// Other args should be preserved
+	if result.ModifiedArgs["file_text"] != "hello world" {
+		t.Errorf("expected file_text preserved, got %q", result.ModifiedArgs["file_text"])
+	}
+}
+
+func TestEvaluate_ModifyAction_Prepend(t *testing.T) {
+	rule := &Rule{
+		Name:           "add-shebang",
+		Action:         ActionModify,
+		ModifyTarget:   "command",
+		ModifyStrategy: StrategyPrepend,
+		Conditions: []Condition{
+			{Field: FieldCommand, Operator: OpContains, Pattern: "npm"},
+		},
+		Message: "set -e && ",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "bash",
+			Args: map[string]interface{}{"command": "npm test"},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for modify/prepend")
+	}
+	if result.ModifiedArgs["command"] != "set -e && npm test" {
+		t.Errorf("expected prepended command, got %q", result.ModifiedArgs["command"])
+	}
+}
+
+func TestEvaluate_ModifyAction_Append(t *testing.T) {
+	rule := &Rule{
+		Name:           "add-verbose",
+		Action:         ActionModify,
+		ModifyTarget:   "command",
+		ModifyStrategy: StrategyAppend,
+		Conditions: []Condition{
+			{Field: FieldCommand, Operator: OpContains, Pattern: "go test"},
+		},
+		Message: " -v -count=1",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "bash",
+			Args: map[string]interface{}{"command": "go test ./..."},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for modify/append")
+	}
+	if result.ModifiedArgs["command"] != "go test ./... -v -count=1" {
+		t.Errorf("expected appended command, got %q", result.ModifiedArgs["command"])
+	}
+}
+
+func TestEvaluate_ModifyAction_Regex(t *testing.T) {
+	rule := &Rule{
+		Name:           "rewrite-branch",
+		Action:         ActionModify,
+		ModifyTarget:   "command",
+		ModifyStrategy: StrategyRegex,
+		Conditions: []Condition{
+			{Field: FieldCommand, Operator: OpContains, Pattern: "checkout"},
+		},
+		Message: "s/main/develop/",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "bash",
+			Args: map[string]interface{}{"command": "git checkout main"},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result for modify/regex")
+	}
+	if result.ModifiedArgs["command"] != "git checkout develop" {
+		t.Errorf("expected regex-modified command, got %q", result.ModifiedArgs["command"])
+	}
+}
+
+func TestEvaluate_ModifyAction_RegexInvalidFallback(t *testing.T) {
+	rule := &Rule{
+		Name:           "bad-regex",
+		Action:         ActionModify,
+		ModifyTarget:   "command",
+		ModifyStrategy: StrategyRegex,
+		Conditions: []Condition{
+			{Field: FieldCommand, Operator: OpContains, Pattern: "test"},
+		},
+		Message: "s/[invalid(/replacement/",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "bash",
+			Args: map[string]interface{}{"command": "npm test"},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	// Invalid regex should leave value unchanged
+	if result.ModifiedArgs["command"] != "npm test" {
+		t.Errorf("invalid regex should leave value unchanged, got %q", result.ModifiedArgs["command"])
+	}
+}
+
+func TestEvaluate_ModifyAction_MissingTargetArg(t *testing.T) {
+	// When the target arg doesn't exist, treat as empty string
+	rule := &Rule{
+		Name:           "add-description",
+		Action:         ActionModify,
+		ModifyTarget:   "description",
+		ModifyStrategy: StrategyReplace,
+		Conditions: []Condition{
+			{Field: FieldToolName, Operator: OpEquals, Pattern: "create"},
+		},
+		Message: "Auto-generated file",
+	}
+	event := &schema.Event{
+		Tool: &schema.ToolEvent{
+			Name: "create",
+			Args: map[string]interface{}{"path": "/tmp/file.txt"},
+		},
+	}
+
+	result := Evaluate(rule, event, "")
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.ModifiedArgs["description"] != "Auto-generated file" {
+		t.Errorf("expected new arg added, got %q", result.ModifiedArgs["description"])
+	}
+	// Original arg preserved
+	if result.ModifiedArgs["path"] != "/tmp/file.txt" {
+		t.Errorf("expected path preserved, got %q", result.ModifiedArgs["path"])
+	}
+}
+
+func TestApplyRegexStrategy(t *testing.T) {
+	tests := []struct {
+		name       string
+		current    string
+		content    string
+		expected   string
+	}{
+		{"sed-style replace", "hello world", "s/world/earth/", "hello earth"},
+		{"sed-style remove", "rm -rf /tmp", "s/ -rf//", "rm /tmp"},
+		{"sed-style regex groups", "file_v2.txt", `s/v(\d+)/v99/`, "file_v99.txt"},
+		{"non-sed fallback", "anything", "replaced", "replaced"},
+		{"empty current sed", "", "s/^/prefix/", "prefix"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := applyRegexStrategy(tt.current, tt.content)
+			if result != tt.expected {
+				t.Errorf("applyRegexStrategy(%q, %q) = %q, want %q", tt.current, tt.content, result, tt.expected)
+			}
+		})
+	}
+}
+

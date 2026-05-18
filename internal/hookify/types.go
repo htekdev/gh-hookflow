@@ -3,18 +3,20 @@ package hookify
 // Rule represents a hookify-format governance rule parsed from a markdown file
 // with YAML frontmatter.
 type Rule struct {
-	Name          string      `yaml:"name"`
-	Description   string      `yaml:"description,omitempty"`
-	Enabled       *bool       `yaml:"enabled,omitempty"` // pointer to distinguish unset (default true) from explicit false
-	Event         string      `yaml:"event"`
-	Action        string      `yaml:"action,omitempty"` // block, warn, inject, modify, continue (default: warn)
-	Pattern       string      `yaml:"pattern,omitempty"`
-	Conditions    []Condition `yaml:"conditions,omitempty"`
-	ToolMatcher   string      `yaml:"tool_matcher,omitempty"` // optional regex to match tool name
-	Lifecycle     string      `yaml:"lifecycle,omitempty"`    // pre or post (default: pre)
-	Message       string      `yaml:"-"`                      // markdown body (not from YAML)
-	FilePath      string      `yaml:"-"`                      // source file path (not from YAML)
-	HookEventType string      `yaml:"-"`                      // resolved Copilot CLI hook event type (set at runtime)
+	Name           string      `yaml:"name"`
+	Description    string      `yaml:"description,omitempty"`
+	Enabled        *bool       `yaml:"enabled,omitempty"` // pointer to distinguish unset (default true) from explicit false
+	Event          string      `yaml:"event"`
+	Action         string      `yaml:"action,omitempty"` // block, warn, inject, modify, continue (default: warn)
+	Pattern        string      `yaml:"pattern,omitempty"`
+	Conditions     []Condition `yaml:"conditions,omitempty"`
+	ToolMatcher    string      `yaml:"tool_matcher,omitempty"` // optional regex to match tool name
+	Lifecycle      string      `yaml:"lifecycle,omitempty"`    // pre or post (default: pre)
+	ModifyTarget   string      `yaml:"modify_target,omitempty"`   // for action=modify: which arg/field to modify
+	ModifyStrategy string      `yaml:"modify_strategy,omitempty"` // for action=modify: prepend, append, replace, regex
+	Message        string      `yaml:"-"`                      // markdown body (not from YAML)
+	FilePath       string      `yaml:"-"`                      // source file path (not from YAML)
+	HookEventType  string      `yaml:"-"`                      // resolved Copilot CLI hook event type (set at runtime)
 }
 
 // IsEnabled returns whether the rule is enabled (default: true).
@@ -86,6 +88,22 @@ const (
 	LifecyclePre  = "pre"
 	LifecyclePost = "post"
 )
+
+// Modify strategy constants
+const (
+	StrategyPrepend = "prepend"
+	StrategyAppend  = "append"
+	StrategyReplace = "replace"
+	StrategyRegex   = "regex"
+)
+
+// ValidModifyStrategies contains all recognized modify strategies.
+var ValidModifyStrategies = map[string]bool{
+	StrategyPrepend: true,
+	StrategyAppend:  true,
+	StrategyReplace: true,
+	StrategyRegex:   true,
+}
 
 // Operator constants
 const (

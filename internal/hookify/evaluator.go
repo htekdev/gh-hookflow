@@ -43,28 +43,33 @@ func Evaluate(rule *Rule, event *schema.Event, sessionDir string) *schema.Workfl
 		}
 	case ActionInject:
 		// Inject additionalContext into the hook response.
+		// The markdown body IS the content to inject as context.
 		// Used for subagentStart, notification, sessionStart to provide
 		// governance instructions or context to the agent.
 		return &schema.WorkflowResult{
 			PermissionDecision:       "allow",
-			PermissionDecisionReason: reason,
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q injected context", rule.Name),
 			AdditionalContext:        reason,
 		}
 	case ActionModify:
-		// Modify tool args. The message body contains the modification instructions.
-		// For preToolUse, this allows rewriting tool arguments.
+		// Modify tool args. The message body contains the modification content.
+		// ModifyTarget specifies which argument to modify.
+		// ModifyStrategy specifies how: prepend, append, replace, regex.
+		modifiedArgs := applyModify(rule, event)
 		return &schema.WorkflowResult{
 			PermissionDecision:       "allow",
-			PermissionDecisionReason: reason,
-			AdditionalContext:        reason,
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q modified arg %q", rule.Name, rule.ModifyTarget),
+			ModifiedArgs:             modifiedArgs,
 		}
 	case ActionContinue:
 		// Force the agent to continue instead of stopping.
+		// The markdown body IS the prompt to respond with when continuing.
 		// Used for agentStop to override the stop decision.
 		return &schema.WorkflowResult{
 			PermissionDecision:       "deny",
-			PermissionDecisionReason: reason,
-			ContinueAgent:           true,
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q forced continuation", rule.Name),
+			ContinueAgent:            true,
+			ContinuePrompt:           reason,
 		}
 	default:
 		// Default to warn
@@ -353,3 +358,72 @@ func regexMatch(pattern, value string) bool {
 	}
 	return re.MatchString(value)
 }
+
+// applyModify applies the modify action to the event's tool args.
+// It reads the target arg from the event, applies the strategy using
+// the rule's message body as the modification content, and returns
+// the full modified args map.
+func applyModify(rule *Rule, event *schema.Event) map[string]interface{} {
+	args := getToolArgs(event)
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+
+	// Copy args to avoid mutating the original
+	result := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		result[k] = v
+	}
+
+	target := rule.ModifyTarget
+	content := rule.Message
+	strategy := rule.ModifyStrategy
+
+	// Get current value of the target arg (empty string if not present)
+	currentVal := ""
+	if v, ok := result[target]; ok {
+		if s, ok := v.(string); ok {
+			currentVal = s
+		}
+	}
+
+	var newVal string
+	switch strategy {
+	case StrategyPrepend:
+		newVal = content + currentVal
+	case StrategyAppend:
+		newVal = currentVal + content
+	case StrategyReplace:
+		newVal = content
+	case StrategyRegex:
+		// For regex strategy, the content is in format: /pattern/replacement/
+		// Or simply treated as a replacement for the full value if no regex delimiters
+		newVal = applyRegexStrategy(currentVal, content)
+	default:
+		newVal = content
+	}
+
+	result[target] = newVal
+	return result
+}
+
+// applyRegexStrategy applies a regex substitution.
+// Content format: s/pattern/replacement/ (sed-style) or just replacement text.
+func applyRegexStrategy(currentVal, content string) string {
+	// Try sed-style: s/pattern/replacement/
+	if len(content) > 2 && content[0] == 's' && content[1] == '/' {
+		parts := strings.SplitN(content[2:], "/", 3)
+		if len(parts) >= 2 {
+			pattern := parts[0]
+			replacement := parts[1]
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return currentVal // invalid regex, return unchanged
+			}
+			return re.ReplaceAllString(currentVal, replacement)
+		}
+	}
+	// Fallback: treat content as full replacement
+	return content
+}
+
