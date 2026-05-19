@@ -854,14 +854,14 @@ func TestIntegrationFullWorkflowPipeline(t *testing.T) {
 	// Step 3: Verify the result
 	if result == nil {
 		t.Fatal("WorkflowResult should not be nil")
-	}
+	} else {
+		// Result should be allow (even if steps had issues with continue-on-error)
+		if result.PermissionDecision != "allow" && result.PermissionDecision != "deny" {
+			t.Errorf("Invalid permission decision: %s", result.PermissionDecision)
+		}
 
-	// Result should be allow (even if steps had issues with continue-on-error)
-	if result.PermissionDecision != "allow" && result.PermissionDecision != "deny" {
-		t.Errorf("Invalid permission decision: %s", result.PermissionDecision)
+		t.Logf("Full pipeline completed: %s (reason: %s)", result.PermissionDecision, result.PermissionDecisionReason)
 	}
-
-	t.Logf("Full pipeline completed: %s (reason: %s)", result.PermissionDecision, result.PermissionDecisionReason)
 }
 
 // TestIntegrationEmptyWorkflowSteps tests a workflow that completes with no blocking issues

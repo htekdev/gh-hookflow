@@ -219,7 +219,7 @@ func extractToolName(event *schema.Event) string {
 // extractToolArgsJSON returns all tool args as a JSON string for regex matching.
 func extractToolArgsJSON(event *schema.Event) string {
 	args := getToolArgs(event)
-	if args == nil || len(args) == 0 {
+	if len(args) == 0 {
 		return ""
 	}
 	data, err := json.Marshal(args)

@@ -8,6 +8,14 @@ import (
 	"github.com/htekdev/gh-hookflow/internal/schema"
 )
 
+func requireWorkflowResult(t *testing.T, result *schema.WorkflowResult, message string) *schema.WorkflowResult {
+	t.Helper()
+	if result == nil {
+		t.Fatal(message)
+	}
+	return result
+}
+
 // --- Operator tests ---
 
 func TestEvaluateCondition_RegexMatch(t *testing.T) {
@@ -483,12 +491,13 @@ func TestEvaluate_BlockAction(t *testing.T) {
 	result := Evaluate(rule, event, "")
 	if result == nil {
 		t.Fatal("expected non-nil result for matching block rule")
-	}
-	if result.PermissionDecision != "deny" {
-		t.Errorf("expected deny, got %q", result.PermissionDecision)
-	}
-	if result.PermissionDecisionReason != "⚠️ Dangerous command blocked" {
-		t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+	} else {
+		if result.PermissionDecision != "deny" {
+			t.Errorf("expected deny, got %q", result.PermissionDecision)
+		}
+		if result.PermissionDecisionReason != "⚠️ Dangerous command blocked" {
+			t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+		}
 	}
 }
 
@@ -509,12 +518,13 @@ func TestEvaluate_WarnAction(t *testing.T) {
 	result := Evaluate(rule, event, "")
 	if result == nil {
 		t.Fatal("expected non-nil result for matching warn rule")
-	}
-	if result.PermissionDecision != "allow" {
-		t.Errorf("expected allow, got %q", result.PermissionDecision)
-	}
-	if result.PermissionDecisionReason != "Echo detected" {
-		t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+	} else {
+		if result.PermissionDecision != "allow" {
+			t.Errorf("expected allow, got %q", result.PermissionDecision)
+		}
+		if result.PermissionDecisionReason != "Echo detected" {
+			t.Errorf("unexpected reason: %q", result.PermissionDecisionReason)
+		}
 	}
 }
 
@@ -534,9 +544,10 @@ func TestEvaluate_DefaultActionIsWarn(t *testing.T) {
 	result := Evaluate(rule, event, "")
 	if result == nil {
 		t.Fatal("expected non-nil result")
-	}
-	if result.PermissionDecision != "allow" {
-		t.Errorf("expected default action to be allow (warn), got %q", result.PermissionDecision)
+	} else {
+		if result.PermissionDecision != "allow" {
+			t.Errorf("expected default action to be allow (warn), got %q", result.PermissionDecision)
+		}
 	}
 }
 
@@ -577,10 +588,7 @@ func TestEvaluate_ANDLogic_AllMatch(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result when all conditions match")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result when all conditions match")
 	if result.PermissionDecision != "deny" {
 		t.Errorf("expected deny, got %q", result.PermissionDecision)
 	}
@@ -618,10 +626,7 @@ func TestEvaluate_EmptyConditions(t *testing.T) {
 	}
 	event := &schema.Event{}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for rule with no conditions (vacuously true)")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for rule with no conditions (vacuously true)")
 	if result.PermissionDecision != "deny" {
 		t.Errorf("expected deny, got %q", result.PermissionDecision)
 	}
@@ -641,10 +646,7 @@ func TestEvaluate_EmptyMessageDefaultsToName(t *testing.T) {
 		Args: map[string]interface{}{"command": "test"},
 	}}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result")
 	if result.PermissionDecisionReason != `Hookify rule "my-rule" triggered` {
 		t.Errorf("expected default reason with rule name, got %q", result.PermissionDecisionReason)
 	}
@@ -668,10 +670,7 @@ func TestEvaluate_TranscriptCondition(t *testing.T) {
 			},
 			Message: "Tests were run",
 		}
-		result := Evaluate(rule, &schema.Event{}, dir)
-		if result == nil {
-			t.Fatal("expected non-nil result for transcript match")
-		}
+		result := requireWorkflowResult(t, Evaluate(rule, &schema.Event{}, dir), "expected non-nil result for transcript match")
 		if result.PermissionDecision != "allow" {
 			t.Errorf("expected allow, got %q", result.PermissionDecision)
 		}
@@ -686,10 +685,7 @@ func TestEvaluate_TranscriptCondition(t *testing.T) {
 			},
 			Message: "Go tests not run",
 		}
-		result := Evaluate(rule, &schema.Event{}, dir)
-		if result == nil {
-			t.Fatal("expected non-nil result for transcript not_contains match")
-		}
+		result := requireWorkflowResult(t, Evaluate(rule, &schema.Event{}, dir), "expected non-nil result for transcript not_contains match")
 		if result.PermissionDecision != "deny" {
 			t.Errorf("expected deny, got %q", result.PermissionDecision)
 		}
@@ -766,10 +762,7 @@ func TestEvaluate_OldTextField(t *testing.T) {
 		},
 	}}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for old_text match")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for old_text match")
 	if result.PermissionDecision != "allow" {
 		t.Errorf("expected allow (warn), got %q", result.PermissionDecision)
 	}
@@ -792,10 +785,7 @@ func TestEvaluate_ContentFieldConcatenation(t *testing.T) {
 		},
 	}}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result when content contains password")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result when content contains password")
 	if result.PermissionDecision != "deny" {
 		t.Errorf("expected deny, got %q", result.PermissionDecision)
 	}
@@ -821,10 +811,7 @@ func TestEvaluate_MultipleConditionsAllOperators(t *testing.T) {
 				Content: "console.log('debug')",
 			},
 		}
-		result := Evaluate(rule, event, "")
-		if result == nil {
-			t.Fatal("expected deny when all conditions match")
-		}
+		result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected deny when all conditions match")
 		if result.PermissionDecision != "deny" {
 			t.Errorf("expected deny, got %q", result.PermissionDecision)
 		}
@@ -896,10 +883,7 @@ func TestEvaluate_InjectAction(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for inject action")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for inject action")
 	if result.PermissionDecision != "allow" {
 		t.Errorf("inject should allow, got %q", result.PermissionDecision)
 	}
@@ -921,10 +905,7 @@ func TestEvaluate_InjectAction_NoConditions(t *testing.T) {
 	}
 	event := &schema.Event{}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected inject to fire with no conditions")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected inject to fire with no conditions")
 	if result.AdditionalContext != "Welcome! Remember to write tests." {
 		t.Errorf("unexpected AdditionalContext: %q", result.AdditionalContext)
 	}
@@ -949,10 +930,7 @@ func TestEvaluate_ContinueAction(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for continue action")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for continue action")
 	if result.PermissionDecision != "deny" {
 		t.Errorf("continue should deny (prevent stop), got %q", result.PermissionDecision)
 	}
@@ -1013,10 +991,7 @@ func TestEvaluate_ModifyAction_Replace(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for modify action")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for modify action")
 	if result.PermissionDecision != "allow" {
 		t.Errorf("modify should allow, got %q", result.PermissionDecision)
 	}
@@ -1050,10 +1025,7 @@ func TestEvaluate_ModifyAction_Prepend(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for modify/prepend")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for modify/prepend")
 	if result.ModifiedArgs["command"] != "set -e && npm test" {
 		t.Errorf("expected prepended command, got %q", result.ModifiedArgs["command"])
 	}
@@ -1077,10 +1049,7 @@ func TestEvaluate_ModifyAction_Append(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for modify/append")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for modify/append")
 	if result.ModifiedArgs["command"] != "go test ./... -v -count=1" {
 		t.Errorf("expected appended command, got %q", result.ModifiedArgs["command"])
 	}
@@ -1104,10 +1073,7 @@ func TestEvaluate_ModifyAction_Regex(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result for modify/regex")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result for modify/regex")
 	if result.ModifiedArgs["command"] != "git checkout develop" {
 		t.Errorf("expected regex-modified command, got %q", result.ModifiedArgs["command"])
 	}
@@ -1131,10 +1097,7 @@ func TestEvaluate_ModifyAction_RegexInvalidFallback(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result")
 	// Invalid regex should leave value unchanged
 	if result.ModifiedArgs["command"] != "npm test" {
 		t.Errorf("invalid regex should leave value unchanged, got %q", result.ModifiedArgs["command"])
@@ -1160,10 +1123,7 @@ func TestEvaluate_ModifyAction_MissingTargetArg(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(rule, event, "")
-	if result == nil {
-		t.Fatal("expected non-nil result")
-	}
+	result := requireWorkflowResult(t, Evaluate(rule, event, ""), "expected non-nil result")
 	if result.ModifiedArgs["description"] != "Auto-generated file" {
 		t.Errorf("expected new arg added, got %q", result.ModifiedArgs["description"])
 	}
@@ -1175,10 +1135,10 @@ func TestEvaluate_ModifyAction_MissingTargetArg(t *testing.T) {
 
 func TestApplyRegexStrategy(t *testing.T) {
 	tests := []struct {
-		name       string
-		current    string
-		content    string
-		expected   string
+		name     string
+		current  string
+		content  string
+		expected string
 	}{
 		{"sed-style replace", "hello world", "s/world/earth/", "hello earth"},
 		{"sed-style remove", "rm -rf /tmp", "s/ -rf//", "rm /tmp"},
@@ -1195,4 +1155,3 @@ func TestApplyRegexStrategy(t *testing.T) {
 		})
 	}
 }
-

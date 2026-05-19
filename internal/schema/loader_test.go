@@ -202,9 +202,10 @@ func TestLoadAndValidateWorkflow_Valid(t *testing.T) {
 	}
 	if workflow == nil {
 		t.Fatal("Expected non-nil workflow")
-	}
-	if workflow.Name != "Lint JavaScript Files" {
-		t.Errorf("Expected name 'Lint JavaScript Files', got '%s'", workflow.Name)
+	} else {
+		if workflow.Name != "Lint JavaScript Files" {
+			t.Errorf("Expected name 'Lint JavaScript Files', got '%s'", workflow.Name)
+		}
 	}
 }
 
