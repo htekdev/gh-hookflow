@@ -100,8 +100,27 @@ func validateRule(rule *Rule) error {
 	if rule.Action != "" && !ValidActions[rule.Action] {
 		return fmt.Errorf("hookify rule %q has invalid action: %q", rule.Name, rule.Action)
 	}
-	if rule.Pattern == "" && len(rule.Conditions) == 0 {
-		return fmt.Errorf("hookify rule %q must have either pattern or conditions", rule.Name)
+
+	// Validate modify action has required fields
+	if rule.Action == ActionModify {
+		if rule.ModifyTarget == "" {
+			return fmt.Errorf("hookify rule %q with action %q requires modify_target field", rule.Name, ActionModify)
+		}
+		if rule.ModifyStrategy == "" {
+			return fmt.Errorf("hookify rule %q with action %q requires modify_strategy field", rule.Name, ActionModify)
+		}
+		if !ValidModifyStrategies[rule.ModifyStrategy] {
+			return fmt.Errorf("hookify rule %q has invalid modify_strategy: %q (must be prepend, append, replace, or regex)", rule.Name, rule.ModifyStrategy)
+		}
+	}
+
+	// Events in NoConditionEvents can omit pattern/conditions (pure-event trigger).
+	// Traditional events (bash, file) require pattern or conditions for filtering.
+	needsCondition := !NoConditionEvents[rule.Event]
+	if needsCondition {
+		if rule.Pattern == "" && len(rule.Conditions) == 0 {
+			return fmt.Errorf("hookify rule %q must have either pattern or conditions", rule.Name)
+		}
 	}
 	if rule.Pattern != "" && len(rule.Conditions) > 0 {
 		return fmt.Errorf("hookify rule %q cannot have both pattern and conditions", rule.Name)

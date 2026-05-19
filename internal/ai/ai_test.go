@@ -13,12 +13,13 @@ func TestNewClient(t *testing.T) {
 	c := NewClient()
 	if c == nil {
 		t.Fatal("NewClient returned nil")
-	}
-	if c.started {
-		t.Error("new client should not be started")
-	}
-	if c.client != nil {
-		t.Error("new client should have nil underlying client")
+	} else {
+		if c.started {
+			t.Error("new client should not be started")
+		}
+		if c.client != nil {
+			t.Error("new client should have nil underlying client")
+		}
 	}
 }
 

@@ -714,3 +714,195 @@ Msg.
 		t.Errorf("expected field %q, got %q", FieldFilePath, rule.Conditions[0].Field)
 	}
 }
+
+// --- Tests for inject, modify, continue action parsing ---
+
+func TestParseRuleFromBytes_InjectAction(t *testing.T) {
+	input := `---
+name: inject-context
+event: subagentStart
+action: inject
+conditions:
+  - field: agent_name
+    operator: contains
+    pattern: coding
+---
+
+You must follow these rules:
+1. Never commit secrets
+2. Always write tests
+`
+	rule, err := ParseRuleFromBytes([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rule.Action != ActionInject {
+		t.Errorf("expected action %q, got %q", ActionInject, rule.Action)
+	}
+	if rule.Message != "You must follow these rules:\n1. Never commit secrets\n2. Always write tests" {
+		t.Errorf("unexpected message: %q", rule.Message)
+	}
+}
+
+func TestParseRuleFromBytes_ContinueAction(t *testing.T) {
+	input := `---
+name: force-continue
+event: agentStop
+action: continue
+conditions:
+  - field: message
+    operator: contains
+    pattern: incomplete
+---
+
+You are not done yet. Continue working on the remaining tasks.
+`
+	rule, err := ParseRuleFromBytes([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rule.Action != ActionContinue {
+		t.Errorf("expected action %q, got %q", ActionContinue, rule.Action)
+	}
+	if rule.Message != "You are not done yet. Continue working on the remaining tasks." {
+		t.Errorf("unexpected message: %q", rule.Message)
+	}
+}
+
+func TestParseRuleFromBytes_ModifyAction_Valid(t *testing.T) {
+	input := `---
+name: sanitize-command
+event: bash
+action: modify
+modify_target: command
+modify_strategy: prepend
+pattern: npm
+---
+
+set -e &&` + " " + `
+`
+	rule, err := ParseRuleFromBytes([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rule.Action != ActionModify {
+		t.Errorf("expected action %q, got %q", ActionModify, rule.Action)
+	}
+	if rule.ModifyTarget != "command" {
+		t.Errorf("expected modify_target %q, got %q", "command", rule.ModifyTarget)
+	}
+	if rule.ModifyStrategy != StrategyPrepend {
+		t.Errorf("expected modify_strategy %q, got %q", StrategyPrepend, rule.ModifyStrategy)
+	}
+}
+
+func TestParseRuleFromBytes_ModifyAction_MissingTarget(t *testing.T) {
+	input := `---
+name: bad-modify
+event: bash
+action: modify
+modify_strategy: replace
+pattern: test
+---
+
+replacement
+`
+	_, err := ParseRuleFromBytes([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for modify action without modify_target")
+	}
+	if !strings.Contains(err.Error(), "modify_target") {
+		t.Errorf("error should mention modify_target, got: %v", err)
+	}
+}
+
+func TestParseRuleFromBytes_ModifyAction_MissingStrategy(t *testing.T) {
+	input := `---
+name: bad-modify
+event: bash
+action: modify
+modify_target: command
+pattern: test
+---
+
+replacement
+`
+	_, err := ParseRuleFromBytes([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for modify action without modify_strategy")
+	}
+	if !strings.Contains(err.Error(), "modify_strategy") {
+		t.Errorf("error should mention modify_strategy, got: %v", err)
+	}
+}
+
+func TestParseRuleFromBytes_ModifyAction_InvalidStrategy(t *testing.T) {
+	input := `---
+name: bad-modify
+event: bash
+action: modify
+modify_target: command
+modify_strategy: invalid_strategy
+pattern: test
+---
+
+replacement
+`
+	_, err := ParseRuleFromBytes([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for invalid modify_strategy")
+	}
+	if !strings.Contains(err.Error(), "invalid modify_strategy") {
+		t.Errorf("error should mention invalid strategy, got: %v", err)
+	}
+}
+
+func TestParseRuleFromBytes_ModifyAction_AllStrategies(t *testing.T) {
+	strategies := []string{StrategyPrepend, StrategyAppend, StrategyReplace, StrategyRegex}
+	for _, strategy := range strategies {
+		t.Run(strategy, func(t *testing.T) {
+			input := fmt.Sprintf(`---
+name: modify-%s
+event: bash
+action: modify
+modify_target: command
+modify_strategy: %s
+pattern: test
+---
+
+content
+`, strategy, strategy)
+			rule, err := ParseRuleFromBytes([]byte(input))
+			if err != nil {
+				t.Fatalf("unexpected error for strategy %q: %v", strategy, err)
+			}
+			if rule.ModifyStrategy != strategy {
+				t.Errorf("expected strategy %q, got %q", strategy, rule.ModifyStrategy)
+			}
+		})
+	}
+}
+
+func TestParseRuleFromBytes_ContinueAction_NoConditions(t *testing.T) {
+	// continue action with agentStop event should work without conditions
+	// (agentStop is in NoConditionEvents)
+	input := `---
+name: always-continue
+event: agentStop
+action: continue
+---
+
+Keep working until all tasks are complete.
+`
+	rule, err := ParseRuleFromBytes([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rule.Action != ActionContinue {
+		t.Errorf("expected action %q, got %q", ActionContinue, rule.Action)
+	}
+	if rule.Message != "Keep working until all tasks are complete." {
+		t.Errorf("unexpected message: %q", rule.Message)
+	}
+}
+

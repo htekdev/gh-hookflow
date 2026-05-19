@@ -4183,7 +4183,7 @@ stdoutR, stdoutW, _ := os.Pipe()
 os.Stdout = stdoutW
 
 escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
-_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", "", true)
 
 _ = stdoutW.Close()
 os.Stdout = oldStdout
@@ -4233,7 +4233,7 @@ stdoutR, stdoutW, _ := os.Pipe()
 os.Stdout = stdoutW
 
 escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
-_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", "", true)
 
 _ = stdoutW.Close()
 os.Stdout = oldStdout
@@ -4281,7 +4281,7 @@ stdoutR, stdoutW, _ := os.Pipe()
 os.Stdout = stdoutW
 
 escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
-_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", "", true)
 
 _ = stdoutW.Close()
 os.Stdout = oldStdout
@@ -4522,7 +4522,7 @@ os.Stdout = stdoutW
 
 // Pass processCwd as dir (simulating os.Getwd() from plugin context)
 // but hook input cwd is repoDir (the actual repo root)
-_ = runWithRawInput(processCwd, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedRepoDir+`"}`, "pre", true)
+_ = runWithRawInput(processCwd, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedRepoDir+`"}`, "pre", "", true)
 
 _ = stdoutW.Close()
 os.Stdout = oldStdout
@@ -4707,7 +4707,7 @@ func TestComplianceExemptionWithStringToolArgs(t *testing.T) {
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runWithRawInput(tmpDir, stringToolArgsInput, "pre", true)
+	_ = runWithRawInput(tmpDir, stringToolArgsInput, "pre", "", true)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout
@@ -5356,7 +5356,7 @@ func TestTranscriptRecording_AppendsOnRawInput(t *testing.T) {
 	stdoutR, stdoutW, _ := os.Pipe()
 	os.Stdout = stdoutW
 
-	_ = runWithRawInput(tmpDir, rawInput, "pre", false)
+	_ = runWithRawInput(tmpDir, rawInput, "pre", "", false)
 
 	_ = stdoutW.Close()
 	os.Stdout = oldStdout

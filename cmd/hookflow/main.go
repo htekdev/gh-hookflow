@@ -277,7 +277,7 @@ Use --event to pass a pre-built event JSON (legacy mode).`,
 
 		// If --raw flag is set, use the new event detection
 		if raw {
-			return runWithRawInput(dir, eventStr, lifecycle, global)
+			return runWithRawInput(dir, eventStr, lifecycle, eventType, global)
 		}
 
 		// Legacy mode: pre-built event JSON
@@ -290,11 +290,23 @@ var triggersCmd = &cobra.Command{
 	Short: "List available trigger types",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Available trigger types:")
-		fmt.Println("  hooks    - Agent hook events (preToolUse, postToolUse)")
+		fmt.Println("  hooks    - Agent hook events (all 13 Copilot CLI events)")
+		fmt.Println("             preToolUse, postToolUse, postToolUseFailure,")
+		fmt.Println("             sessionStart, sessionEnd, agentStop,")
+		fmt.Println("             subagentStart, subagentStop, permissionRequest,")
+		fmt.Println("             notification, preCompact, errorOccurred,")
+		fmt.Println("             userPromptSubmitted")
 		fmt.Println("  tool     - Tool-specific triggers with argument filtering")
 		fmt.Println("  file     - File create/edit events")
 		fmt.Println("  commit   - Git commit events")
 		fmt.Println("  push     - Git push events")
+		fmt.Println()
+		fmt.Println("Hookify aliases (for .md rules):")
+		fmt.Println("  bash     - Shell tool events (powershell, bash, shell, terminal)")
+		fmt.Println("  file     - File tool events (create, edit)")
+		fmt.Println("  all      - Matches any event type")
+		fmt.Println("  stop     - agentStop and subagentStop events")
+		fmt.Println("  prompt   - userPromptSubmitted events")
 	},
 }
 
@@ -320,7 +332,7 @@ func init() {
 	runCmd.Flags().StringP("workflow", "w", "", "Specific workflow to run")
 	runCmd.Flags().StringP("dir", "d", "", "Directory to search (default: current directory)")
 	runCmd.Flags().BoolP("raw", "r", false, "Accept raw hook input and auto-detect event type")
-	runCmd.Flags().StringP("event-type", "t", "preToolUse", "Hook event type: preToolUse or postToolUse")
+	runCmd.Flags().StringP("event-type", "t", "preToolUse", "Hook event type (preToolUse, postToolUse, postToolUseFailure, sessionStart, sessionEnd, agentStop, subagentStart, subagentStop, permissionRequest, notification, preCompact, errorOccurred, userPromptSubmitted)")
 	runCmd.Flags().Bool("global", false, "Running from global/plugin hooks (skips if repo hooks already ran)")
 
 	// logs flags
@@ -329,13 +341,17 @@ func init() {
 	logsCmd.Flags().Bool("path", false, "Only print log path (for scripting)")
 }
 
-// eventTypeToLifecycle converts Copilot hook event type to workflow lifecycle
+// eventTypeToLifecycle converts Copilot hook event type to workflow lifecycle.
+// All 13 Copilot CLI hook events map to either "pre" or "post":
+//   - preToolUse, sessionStart, subagentStart, permissionRequest, preCompact,
+//     agentStop, userPromptSubmitted, notification, errorOccurred → "pre"
+//   - postToolUse, postToolUseFailure, sessionEnd, subagentStop → "post"
 func eventTypeToLifecycle(eventType string) string {
 	switch eventType {
-	case "postToolUse", "post":
+	case "postToolUse", "postToolUseFailure", "sessionEnd", "subagentStop", "post":
 		return "post"
 	default:
-		return "pre" // preToolUse, pre, or any unknown defaults to pre
+		return "pre"
 	}
 }
 
@@ -363,7 +379,7 @@ func runWorkflow(dir, workflowName string) error {
 }
 
 // runWithRawInput handles raw Copilot hook input and auto-detects event type
-func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
+func runWithRawInput(dir, inputStr, lifecycle, hookEventType string, global bool) error {
 	log := logging.Context("run")
 	done := logging.StartOperation("runWithRawInput", "dir="+dir, "lifecycle="+lifecycle, fmt.Sprintf("global=%v", global))
 
@@ -508,13 +524,17 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	// Set lifecycle from CLI flag
 	evt.Lifecycle = lifecycle
 
-	// Populate Hook event — every raw hook invocation is a hook event
-	hookType := "preToolUse"
-	if lifecycle == "post" {
-		hookType = "postToolUse"
+	// Populate Hook event — every raw hook invocation is a hook event.
+	// Use the actual event type from the --event-type flag (not just pre/post lifecycle).
+	if hookEventType == "" {
+		// Fall back to lifecycle-based inference for backward compatibility
+		hookEventType = "preToolUse"
+		if lifecycle == "post" {
+			hookEventType = "postToolUse"
+		}
 	}
 	evt.Hook = &schema.HookEvent{
-		Type: hookType,
+		Type: hookEventType,
 		Cwd:  evt.Cwd,
 	}
 	if evt.Tool != nil {
@@ -528,6 +548,31 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 			Name: raw.ToolName,
 			Args: toolArgs,
 		}
+	}
+
+	// For non-tool events, store the full payload for field extraction
+	switch hookEventType {
+	case "sessionStart", "sessionEnd", "agentStop", "subagentStart", "subagentStop",
+		"permissionRequest", "notification", "preCompact", "errorOccurred", "userPromptSubmitted":
+		var payload map[string]interface{}
+		if err := json.Unmarshal(input, &payload); err == nil {
+			evt.Hook.Payload = payload
+		}
+		// Also populate Tool with the payload data for field extraction compatibility
+		if evt.Tool == nil {
+			evt.Tool = &schema.ToolEvent{
+				Name: hookEventType,
+				Args: make(map[string]interface{}),
+			}
+			if err := json.Unmarshal(input, &evt.Tool.Args); err != nil {
+				evt.Tool.Args = make(map[string]interface{})
+			}
+		}
+	}
+
+	// Store session ID on the event
+	if raw.SessionID != "" {
+		evt.SessionID = raw.SessionID
 	}
 
 	log.Debug("detected event: file=%v, tool=%v, commit=%v, push=%v, hook=%v, lifecycle=%s", evt.File != nil, evt.Tool != nil, evt.Commit != nil, evt.Push != nil, evt.Hook != nil, lifecycle)
@@ -847,16 +892,25 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	// Aggregate results — deny wins across both hookify and YAML workflows
 	var finalResult *schema.WorkflowResult
 	var warnReasons []string
+	var additionalContexts []string
 
 	// Check hookify results first (already evaluated — pure Go, no shell)
 	for _, result := range hookifyResults {
 		if result.PermissionDecision == "deny" {
-			log.Warn("hookify rule denied: %s", result.PermissionDecisionReason)
+			// ContinueAgent is a special deny that forces agent continuation (agentStop override)
+			if result.ContinueAgent {
+				log.Info("hookify rule forcing agent continuation: %s", result.PermissionDecisionReason)
+			} else {
+				log.Warn("hookify rule denied: %s", result.PermissionDecisionReason)
+			}
 			return outputWorkflowResult(result)
 		}
 		log.Debug("hookify rule allowed/warned")
 		if result.PermissionDecisionReason != "" {
 			warnReasons = append(warnReasons, result.PermissionDecisionReason)
+		}
+		if result.AdditionalContext != "" {
+			additionalContexts = append(additionalContexts, result.AdditionalContext)
 		}
 		finalResult = result
 	}
@@ -892,6 +946,11 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 	// Concatenate all warn reasons so no advisory feedback is lost
 	if len(warnReasons) > 1 && finalResult != nil {
 		finalResult.PermissionDecisionReason = strings.Join(warnReasons, "\n")
+	}
+
+	// Merge all additionalContext from inject rules
+	if len(additionalContexts) > 0 && finalResult != nil {
+		finalResult.AdditionalContext = strings.Join(additionalContexts, "\n\n")
 	}
 
 	return outputWorkflowResult(finalResult)

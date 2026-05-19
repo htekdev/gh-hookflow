@@ -162,6 +162,7 @@ type Event struct {
 	Cwd       string       `json:"cwd"`
 	Timestamp string       `json:"timestamp"`
 	Lifecycle string       `json:"lifecycle,omitempty"` // pre or post (defaults to pre)
+	SessionID string       `json:"sessionId,omitempty"` // Copilot CLI session identifier
 }
 
 // GetLifecycle returns the event lifecycle (defaults to "pre")
@@ -172,11 +173,16 @@ func (e *Event) GetLifecycle() string {
 	return e.Lifecycle
 }
 
-// HookEvent contains hook-specific event data
+// HookEvent contains hook-specific event data.
+// Type now holds any of the 13 Copilot CLI hook event types:
+// sessionStart, sessionEnd, userPromptSubmitted, preToolUse, postToolUse,
+// postToolUseFailure, agentStop, subagentStart, subagentStop,
+// permissionRequest, notification, preCompact, errorOccurred
 type HookEvent struct {
-	Type string     `json:"type"` // preToolUse, postToolUse
-	Tool *ToolEvent `json:"tool"`
-	Cwd  string     `json:"cwd"`
+	Type    string                 `json:"type"`              // The Copilot CLI hook event type
+	Tool    *ToolEvent             `json:"tool,omitempty"`    // Tool data (for preToolUse/postToolUse/postToolUseFailure)
+	Cwd     string                 `json:"cwd"`
+	Payload map[string]interface{} `json:"payload,omitempty"` // Raw hook payload fields for new event types
 }
 
 // ToolEvent contains tool invocation data
@@ -217,10 +223,14 @@ type FileStatus struct {
 
 // WorkflowResult represents the outcome of running a workflow
 type WorkflowResult struct {
-	PermissionDecision       string `json:"permissionDecision"` // allow, deny
-	PermissionDecisionReason string `json:"permissionDecisionReason,omitempty"`
-	LogFile                  string `json:"logFile,omitempty"`    // Path to detailed log file
-	StepOutputs              string `json:"stepOutputs,omitempty"` // Combined step output for logging
+	PermissionDecision       string                 `json:"permissionDecision"` // allow, deny
+	PermissionDecisionReason string                 `json:"permissionDecisionReason,omitempty"`
+	LogFile                  string                 `json:"logFile,omitempty"`    // Path to detailed log file
+	StepOutputs              string                 `json:"stepOutputs,omitempty"` // Combined step output for logging
+	AdditionalContext        string                 `json:"additionalContext,omitempty"` // Context injection for subagentStart, notification, sessionStart
+	ContinueAgent            bool                   `json:"continueAgent,omitempty"`    // Force agent to continue (for agentStop override)
+	ContinuePrompt           string                 `json:"continuePrompt,omitempty"`   // The prompt to respond with when continuing
+	ModifiedArgs             map[string]interface{} `json:"modifiedArgs,omitempty"`     // Rewritten tool arguments (for preToolUse modify)
 }
 
 // NewAllowResult creates an allow result

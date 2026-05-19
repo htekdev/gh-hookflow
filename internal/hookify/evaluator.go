@@ -1,6 +1,7 @@
 package hookify
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +41,36 @@ func Evaluate(rule *Rule, event *schema.Event, sessionDir string) *schema.Workfl
 			PermissionDecision:       "allow",
 			PermissionDecisionReason: reason,
 		}
+	case ActionInject:
+		// Inject additionalContext into the hook response.
+		// The markdown body IS the content to inject as context.
+		// Used for subagentStart, notification, sessionStart to provide
+		// governance instructions or context to the agent.
+		return &schema.WorkflowResult{
+			PermissionDecision:       "allow",
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q injected context", rule.Name),
+			AdditionalContext:        reason,
+		}
+	case ActionModify:
+		// Modify tool args. The message body contains the modification content.
+		// ModifyTarget specifies which argument to modify.
+		// ModifyStrategy specifies how: prepend, append, replace, regex.
+		modifiedArgs := applyModify(rule, event)
+		return &schema.WorkflowResult{
+			PermissionDecision:       "allow",
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q modified arg %q", rule.Name, rule.ModifyTarget),
+			ModifiedArgs:             modifiedArgs,
+		}
+	case ActionContinue:
+		// Force the agent to continue instead of stopping.
+		// The markdown body IS the prompt to respond with when continuing.
+		// Used for agentStop to override the stop decision.
+		return &schema.WorkflowResult{
+			PermissionDecision:       "deny",
+			PermissionDecisionReason: fmt.Sprintf("Hookify rule %q forced continuation", rule.Name),
+			ContinueAgent:            true,
+			ContinuePrompt:           reason,
+		}
 	default:
 		// Default to warn
 		return &schema.WorkflowResult{
@@ -64,6 +95,22 @@ func extractField(field string, event *schema.Event, sessionDir string) string {
 		return extractContent(event)
 	case FieldTranscript:
 		return readTranscriptContent(sessionDir)
+	case FieldToolName:
+		return extractToolName(event)
+	case FieldToolArgs:
+		return extractToolArgsJSON(event)
+	case FieldAgentName:
+		return extractAgentName(event)
+	case FieldAgentType:
+		return extractAgentType(event)
+	case FieldMessage:
+		return extractMessage(event)
+	case FieldHookEvent:
+		return extractHookEventType(event)
+	case FieldSessionID:
+		return extractSessionID(event)
+	case FieldToolResult:
+		return extractToolResult(event)
 	default:
 		return ""
 	}
@@ -158,6 +205,131 @@ func readTranscriptContent(sessionDir string) string {
 	return string(data)
 }
 
+// extractToolName returns the tool name from the event.
+func extractToolName(event *schema.Event) string {
+	if event.Tool != nil {
+		return event.Tool.Name
+	}
+	if event.Hook != nil && event.Hook.Tool != nil {
+		return event.Hook.Tool.Name
+	}
+	return ""
+}
+
+// extractToolArgsJSON returns all tool args as a JSON string for regex matching.
+func extractToolArgsJSON(event *schema.Event) string {
+	args := getToolArgs(event)
+	if len(args) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(args)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// extractAgentName extracts the agent name from subagentStart/subagentStop events.
+func extractAgentName(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	// subagentStart sends agentName in the hook payload
+	if v, ok := args["agentName"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	if v, ok := args["agent_name"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// extractAgentType extracts the agent type from subagentStart events.
+func extractAgentType(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	if v, ok := args["agentType"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	if v, ok := args["agent_type"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// extractMessage extracts the message from notification or error events.
+func extractMessage(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	for _, key := range []string{"message", "error", "errorMessage", "description"} {
+		if v, ok := args[key]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// extractHookEventType returns the Copilot CLI hook event type (e.g., "preToolUse").
+func extractHookEventType(event *schema.Event) string {
+	if event.Hook != nil {
+		return event.Hook.Type
+	}
+	return ""
+}
+
+// extractSessionID returns the session identifier from the event.
+func extractSessionID(event *schema.Event) string {
+	if event.SessionID != "" {
+		return event.SessionID
+	}
+	return ""
+}
+
+// extractToolResult extracts the tool result content for postToolUse events.
+func extractToolResult(event *schema.Event) string {
+	args := getToolArgs(event)
+	if args == nil {
+		return ""
+	}
+	if v, ok := args["toolResult"]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		// toolResult might be a nested object — marshal to JSON
+		data, err := json.Marshal(v)
+		if err == nil {
+			return string(data)
+		}
+	}
+	return ""
+}
+
+// getToolArgs returns tool args, checking both Tool and Hook.Tool.
+func getToolArgs(event *schema.Event) map[string]interface{} {
+	if event.Tool != nil && event.Tool.Args != nil {
+		return event.Tool.Args
+	}
+	if event.Hook != nil && event.Hook.Tool != nil && event.Hook.Tool.Args != nil {
+		return event.Hook.Tool.Args
+	}
+	return nil
+}
+
 // evaluateCondition applies the operator to check if fieldValue matches the pattern.
 func evaluateCondition(cond *Condition, fieldValue string) bool {
 	switch cond.Operator {
@@ -186,3 +358,72 @@ func regexMatch(pattern, value string) bool {
 	}
 	return re.MatchString(value)
 }
+
+// applyModify applies the modify action to the event's tool args.
+// It reads the target arg from the event, applies the strategy using
+// the rule's message body as the modification content, and returns
+// the full modified args map.
+func applyModify(rule *Rule, event *schema.Event) map[string]interface{} {
+	args := getToolArgs(event)
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+
+	// Copy args to avoid mutating the original
+	result := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		result[k] = v
+	}
+
+	target := rule.ModifyTarget
+	content := rule.Message
+	strategy := rule.ModifyStrategy
+
+	// Get current value of the target arg (empty string if not present)
+	currentVal := ""
+	if v, ok := result[target]; ok {
+		if s, ok := v.(string); ok {
+			currentVal = s
+		}
+	}
+
+	var newVal string
+	switch strategy {
+	case StrategyPrepend:
+		newVal = content + currentVal
+	case StrategyAppend:
+		newVal = currentVal + content
+	case StrategyReplace:
+		newVal = content
+	case StrategyRegex:
+		// For regex strategy, the content is in format: /pattern/replacement/
+		// Or simply treated as a replacement for the full value if no regex delimiters
+		newVal = applyRegexStrategy(currentVal, content)
+	default:
+		newVal = content
+	}
+
+	result[target] = newVal
+	return result
+}
+
+// applyRegexStrategy applies a regex substitution.
+// Content format: s/pattern/replacement/ (sed-style) or just replacement text.
+func applyRegexStrategy(currentVal, content string) string {
+	// Try sed-style: s/pattern/replacement/
+	if len(content) > 2 && content[0] == 's' && content[1] == '/' {
+		parts := strings.SplitN(content[2:], "/", 3)
+		if len(parts) >= 2 {
+			pattern := parts[0]
+			replacement := parts[1]
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return currentVal // invalid regex, return unchanged
+			}
+			return re.ReplaceAllString(currentVal, replacement)
+		}
+	}
+	// Fallback: treat content as full replacement
+	return content
+}
+
