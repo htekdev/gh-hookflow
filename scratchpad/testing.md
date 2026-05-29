@@ -4,7 +4,7 @@ This document describes the testing conventions used in this repository. It serv
 
 ## Testing Philosophy
 
-- **No mocks** — test real component interactions, not mocked interfaces
+- **No mocks** — prefer real component interactions over mocked interfaces; mocks are only acceptable for unavoidable external dependencies (e.g., third-party APIs with no local equivalent)
 - **No test suites** — use plain `TestXxx` functions with `t.Run()` for subtests
 - **Table-driven tests** — preferred for functions with multiple input/output combinations
 - **Real filesystem** — use `t.TempDir()` for isolated filesystem tests
@@ -84,7 +84,7 @@ func TestContextEvaluate(t *testing.T) {
 }
 ```
 
-See `internal/expression/evaluator_test.go` for real examples of this pattern in the codebase.
+See the expression package tests (`internal/expression/`) for real examples of this pattern in the codebase.
 
 ## Unit Tests
 
@@ -124,7 +124,7 @@ func TestStepWithoutTimeout(t *testing.T) {
 
 E2E tests live in `tests/e2e/` and test the full `hookflow` binary.
 
-They rely on helpers defined in the package:
+They rely on helpers defined in the package (refer to `tests/e2e/helpers_test.go` or similar for the current signatures):
 
 - `setupWorkspaceWithHookflows(t, map[string]string)` — creates a temp workspace with hookflow YAML files
 - `runHookflow(t, workspace, eventJSON, lifecycle, env)` — runs the binary and returns `(exitCode, output)`
