@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestMarkRepoHooksActive(t *testing.T) {
@@ -111,5 +112,47 @@ func TestClearRepoHooksActive_NoMarker(t *testing.T) {
 	// Clear when no marker exists should not error
 	if err := ClearRepoHooksActive(); err != nil {
 		t.Fatalf("ClearRepoHooksActive() should not error when no marker: %v", err)
+	}
+}
+
+func TestIsRepoHooksActiveStale(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
+
+	if err := MarkRepoHooksActive(); err != nil {
+		t.Fatalf("MarkRepoHooksActive() error: %v", err)
+	}
+
+	markerPath := filepath.Join(dir, repoHooksActiveFileName)
+	oldTime := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(markerPath, oldTime, oldTime); err != nil {
+		t.Fatalf("os.Chtimes() error: %v", err)
+	}
+
+	stale, age, err := IsRepoHooksActiveStale(time.Hour)
+	if err != nil {
+		t.Fatalf("IsRepoHooksActiveStale() error: %v", err)
+	}
+	if !stale {
+		t.Fatal("expected marker to be stale")
+	}
+	if age <= time.Hour {
+		t.Fatalf("expected age > 1h, got %v", age)
+	}
+}
+
+func TestIsRepoHooksActiveStale_NoMarker(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOOKFLOW_SESSION_DIR", dir)
+
+	stale, age, err := IsRepoHooksActiveStale(time.Hour)
+	if err != nil {
+		t.Fatalf("IsRepoHooksActiveStale() error: %v", err)
+	}
+	if stale {
+		t.Fatal("expected marker to not be stale when marker does not exist")
+	}
+	if age != 0 {
+		t.Fatalf("expected age 0 when marker does not exist, got %v", age)
 	}
 }

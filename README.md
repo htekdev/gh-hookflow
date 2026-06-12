@@ -125,6 +125,8 @@ Or just ask Copilot to create one — it knows the syntax from the installed ski
 
 When both exist, repo hooks run first and personal hooks automatically defer (via the `--global` flag). This means repo-specific workflows always take priority.
 
+To prevent silent bypass after crashes/restarts, stale `repo-hooks-active` session markers are auto-cleared during `--global` execution. The stale threshold defaults to `24h` and can be configured with `HOOKFLOW_REPO_HOOKS_ACTIVE_STALE_THRESHOLD` (for example, `5m` or `1h`).
+
 ### Test and share
 
 ```bash
