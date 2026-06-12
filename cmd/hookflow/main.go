@@ -25,6 +25,11 @@ import (
 
 var version = "0.1.0"
 
+const (
+	repoHooksActiveStaleThresholdEnv     = "HOOKFLOW_REPO_HOOKS_ACTIVE_STALE_THRESHOLD"
+	defaultRepoHooksActiveStaleThreshold = 24 * time.Hour
+)
+
 func main() {
 	// Initialize logging (errors are non-fatal)
 	_ = logging.Init()
@@ -430,6 +435,21 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 			log.Warn("failed to check repo-hooks-active: %v", err)
 		}
 		if repoActive {
+			staleThreshold, thresholdErr := repoHooksActiveStaleThreshold()
+			if thresholdErr != nil {
+				log.Warn("invalid %s=%q, using default %s", repoHooksActiveStaleThresholdEnv, os.Getenv(repoHooksActiveStaleThresholdEnv), defaultRepoHooksActiveStaleThreshold)
+				staleThreshold = defaultRepoHooksActiveStaleThreshold
+			}
+			stale, age, staleErr := session.IsRepoHooksActiveStale(staleThreshold)
+			if staleErr != nil {
+				log.Warn("failed to evaluate repo-hooks-active staleness: %v", staleErr)
+			} else if stale {
+				log.Info("global mode: clearing stale repo-hooks-active marker for session %q (age=%s, threshold=%s)", raw.SessionID, age.Round(time.Second), staleThreshold)
+				_ = session.ClearRepoHooksActive()
+				repoActive = false
+			}
+		}
+		if repoActive {
 			// Verify repo hooks still exist — hooks.json may have been deleted mid-session
 			repoHooksFile := filepath.Join(dir, ".github", "hooks", "hooks.json")
 			if hasHookflowHooks(repoHooksFile) {
@@ -568,6 +588,20 @@ func runWithRawInput(dir, inputStr, lifecycle string, global bool) error {
 	err = runMatchingWorkflowsWithEvent(dir, evt, global)
 	done(err)
 	return err
+}
+
+func repoHooksActiveStaleThreshold() (time.Duration, error) {
+	rawThreshold := strings.TrimSpace(os.Getenv(repoHooksActiveStaleThresholdEnv))
+	if rawThreshold == "" {
+		return defaultRepoHooksActiveStaleThreshold, nil
+	}
+
+	threshold, err := time.ParseDuration(rawThreshold)
+	if err != nil || threshold <= 0 {
+		return 0, fmt.Errorf("invalid duration")
+	}
+
+	return threshold, nil
 }
 
 // primitiveGuards performs critical safety checks on raw hook input before
@@ -901,7 +935,7 @@ func runMatchingWorkflowsWithEvent(dir string, evt *schema.Event, global bool) e
 func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	// Parse the event
 	var eventData map[string]interface{}
-	
+
 	// Handle stdin input
 	if eventStr == "-" {
 		input, err := io.ReadAll(os.Stdin)
@@ -910,34 +944,34 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 		}
 		eventStr = string(input)
 	}
-	
+
 	if eventStr == "" {
 		// No event provided, allow by default
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
 	}
-	
+
 	if err := json.Unmarshal([]byte(eventStr), &eventData); err != nil {
 		return fmt.Errorf("failed to parse event JSON: %w", err)
 	}
-	
+
 	// Convert to Event struct
 	event := parseEventData(eventData)
-	
+
 	// Normalize file path to be relative to dir (for matching against workflow patterns)
 	if event.File != nil && event.File.Path != "" {
 		event.File.Path = normalizeFilePath(event.File.Path, dir)
 	}
-	
+
 	// Set lifecycle from CLI flag
 	event.Lifecycle = lifecycle
-	
+
 	// Discover workflows using the discover package
 	discoveredWFs, err := discover.Discover(dir)
 	if err != nil {
 		return fmt.Errorf("failed to discover workflows: %w", err)
 	}
-	
+
 	if len(discoveredWFs) == 0 {
 		// No workflows found, allow by default
 		result := schema.NewAllowResult()
@@ -948,7 +982,7 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 	for _, wf := range discoveredWFs {
 		workflowFiles = append(workflowFiles, wf.Path)
 	}
-	
+
 	// Load and match workflows
 	var matchingWorkflows []*schema.Workflow
 	var hookifyResults []*schema.WorkflowResult
@@ -983,20 +1017,20 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 			// Skip invalid workflows
 			continue
 		}
-		
+
 		// Check if workflow matches the event
 		matcher := trigger.NewMatcher(wf)
 		if matcher.Match(event) {
 			matchingWorkflows = append(matchingWorkflows, wf)
 		}
 	}
-	
+
 	if len(matchingWorkflows) == 0 && len(hookifyResults) == 0 {
 		// No matching workflows or hookify rules, allow by default
 		result := schema.NewAllowResult()
 		return outputWorkflowResult(result)
 	}
-	
+
 	// Aggregate results — deny wins
 	var finalResult *schema.WorkflowResult
 	var warnReasons []string
@@ -1027,7 +1061,7 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 			finalResult = result
 		}
 	}
-	
+
 	if finalResult == nil {
 		finalResult = schema.NewAllowResult()
 	}
@@ -1043,7 +1077,7 @@ func runMatchingWorkflows(dir, eventStr, lifecycle string) error {
 // parseEventData converts raw event data to a schema.Event
 func parseEventData(data map[string]interface{}) *schema.Event {
 	event := &schema.Event{}
-	
+
 	// Parse hook event
 	if hookData, ok := data["hook"].(map[string]interface{}); ok {
 		event.Hook = &schema.HookEvent{}
@@ -1063,7 +1097,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 			}
 		}
 	}
-	
+
 	// Parse tool event
 	if toolData, ok := data["tool"].(map[string]interface{}); ok {
 		event.Tool = &schema.ToolEvent{}
@@ -1077,7 +1111,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 			event.Tool.HookType = hookType
 		}
 	}
-	
+
 	// Parse file event
 	if fileData, ok := data["file"].(map[string]interface{}); ok {
 		event.File = &schema.FileEvent{}
@@ -1091,7 +1125,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 			event.File.Content = c
 		}
 	}
-	
+
 	// Parse commit event
 	if commitData, ok := data["commit"].(map[string]interface{}); ok {
 		event.Commit = &schema.CommitEvent{}
@@ -1119,7 +1153,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 			}
 		}
 	}
-	
+
 	// Parse push event
 	if pushData, ok := data["push"].(map[string]interface{}); ok {
 		event.Push = &schema.PushEvent{}
@@ -1133,7 +1167,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 			event.Push.After = after
 		}
 	}
-	
+
 	// Parse top-level cwd and timestamp
 	if cwd, ok := data["cwd"].(string); ok {
 		event.Cwd = cwd
@@ -1141,7 +1175,7 @@ func parseEventData(data map[string]interface{}) *schema.Event {
 	if ts, ok := data["timestamp"].(string); ok {
 		event.Timestamp = ts
 	}
-	
+
 	return event
 }
 
@@ -1209,7 +1243,7 @@ func extractPushRef(command string, currentBranch string) string {
 	if len(matches) >= 2 {
 		return "refs/tags/" + matches[1]
 	}
-	
+
 	// Default to current branch
 	return "refs/heads/" + currentBranch
 }
@@ -1372,24 +1406,24 @@ func normalizeFilePath(filePath, dir string) string {
 	// Normalize path separators for cross-platform compatibility
 	filePath = strings.ReplaceAll(filePath, "\\", "/")
 	dir = strings.ReplaceAll(dir, "\\", "/")
-	
+
 	// Ensure dir ends with /
 	if !strings.HasSuffix(dir, "/") {
 		dir = dir + "/"
 	}
-	
+
 	// If the file path starts with the dir, make it relative
 	if strings.HasPrefix(filePath, dir) {
 		return strings.TrimPrefix(filePath, dir)
 	}
-	
+
 	// Also try case-insensitive match (Windows paths)
 	lowerFilePath := strings.ToLower(filePath)
 	lowerDir := strings.ToLower(dir)
 	if strings.HasPrefix(lowerFilePath, lowerDir) {
 		return filePath[len(dir):]
 	}
-	
+
 	// Return as-is if not under dir
 	return filePath
 }

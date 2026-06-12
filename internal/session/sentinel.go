@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const repoHooksActiveFileName = "repo-hooks-active"
@@ -57,4 +58,24 @@ func IsRepoHooksActive() (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// IsRepoHooksActiveStale returns whether the repo-hooks-active marker is older
+// than threshold. If the marker does not exist, stale is false.
+func IsRepoHooksActiveStale(threshold time.Duration) (stale bool, age time.Duration, err error) {
+	path, err := repoHooksActivePath()
+	if err != nil {
+		return false, 0, err
+	}
+
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+
+	age = time.Since(info.ModTime())
+	return age > threshold, age, nil
 }

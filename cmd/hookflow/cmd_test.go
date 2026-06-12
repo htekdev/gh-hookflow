@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	eventpkg "github.com/htekdev/gh-hookflow/internal/event"
 	"github.com/htekdev/gh-hookflow/internal/schema"
@@ -4194,6 +4195,69 @@ output := buf.String()
 
 if !strings.Contains(output, "allow") {
 t.Errorf("Expected allow when repo-hooks-active marker exists in global mode, got: %s", output)
+}
+}
+
+// TestGlobalFlagClearsStaleRepoHooksMarker verifies stale markers do not keep
+// bypassing global mode and are cleaned up automatically.
+func TestGlobalFlagClearsStaleRepoHooksMarker(t *testing.T) {
+tmpDir, err := os.MkdirTemp("", "hookflow-global-stale-*")
+if err != nil {
+t.Fatal(err)
+}
+defer func() { _ = os.RemoveAll(tmpDir) }()
+
+sessionDir := t.TempDir()
+t.Setenv("HOOKFLOW_SESSION_DIR", sessionDir)
+t.Setenv("HOOKFLOW_REPO_HOOKS_ACTIVE_STALE_THRESHOLD", "1h")
+
+// Create hookflows + hooks.json to satisfy global compliance and dedup checks.
+workflowDir := filepath.Join(tmpDir, ".github", "hookflows")
+if err := os.MkdirAll(workflowDir, 0755); err != nil {
+t.Fatal(err)
+}
+workflow := "name: allow-all\non:\n  file:\n    paths: [\"**\"]\nsteps:\n  - run: echo ok\n"
+if err := os.WriteFile(filepath.Join(workflowDir, "allow.yml"), []byte(workflow), 0644); err != nil {
+t.Fatal(err)
+}
+hooksDir := filepath.Join(tmpDir, ".github", "hooks")
+if err := os.MkdirAll(hooksDir, 0755); err != nil {
+t.Fatal(err)
+}
+hooksJSON := `{"version":1,"hooks":{"preToolUse":[{"bash":"gh hookflow run --raw --event-type preToolUse"}]}}`
+if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), []byte(hooksJSON), 0644); err != nil {
+t.Fatal(err)
+}
+
+// Create stale marker
+markerPath := filepath.Join(sessionDir, "repo-hooks-active")
+if err := os.WriteFile(markerPath, []byte(""), 0644); err != nil {
+t.Fatal(err)
+}
+oldTime := time.Now().Add(-2 * time.Hour)
+if err := os.Chtimes(markerPath, oldTime, oldTime); err != nil {
+t.Fatal(err)
+}
+
+oldStdout := os.Stdout
+stdoutR, stdoutW, _ := os.Pipe()
+os.Stdout = stdoutW
+
+escapedDir := strings.ReplaceAll(tmpDir, `\`, `\\`)
+_ = runWithRawInput(tmpDir, `{"toolName":"create","toolArgs":{"path":"test.txt","file_text":"hello"},"cwd":"`+escapedDir+`"}`, "pre", true)
+
+_ = stdoutW.Close()
+os.Stdout = oldStdout
+
+var buf bytes.Buffer
+_, _ = buf.ReadFrom(stdoutR)
+output := buf.String()
+
+if !strings.Contains(output, "allow") {
+t.Errorf("Expected command to continue after stale marker cleanup, got: %s", output)
+}
+if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+t.Error("Expected stale repo-hooks-active marker to be cleared")
 }
 }
 
