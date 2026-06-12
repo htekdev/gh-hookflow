@@ -7,6 +7,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLogLevelString(t *testing.T) {
@@ -21,28 +24,23 @@ func TestLogLevelString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := tt.level.String(); got != tt.expected {
-			t.Errorf("Level(%d).String() = %q, want %q", tt.level, got, tt.expected)
-		}
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.level.String(), "Level.String() should return correct string representation")
+		})
 	}
 }
 
 func TestLogDir(t *testing.T) {
 	dir := logDir()
-	if dir == "" {
-		t.Error("logDir() returned empty string")
-	}
+	require.NotEmpty(t, dir, "logDir() should return a non-empty path")
 
-	// Should end with .hookflow/logs or hookflow/logs
-	if !strings.Contains(dir, "hookflow") || !strings.HasSuffix(dir, "logs") {
-		t.Errorf("logDir() = %q, expected path containing hookflow/logs", dir)
-	}
+	// Should contain hookflow/logs path component
+	assert.Contains(t, dir, "hookflow", "logDir() path should contain 'hookflow'")
+	assert.Regexp(t, `logs$`, dir, "logDir() path should end with 'logs'")
 
 	// Test the exported version too
 	exportedDir := LogDir()
-	if exportedDir != dir {
-		t.Errorf("LogDir() = %q, want %q (same as logDir())", exportedDir, dir)
-	}
+	assert.Equal(t, dir, exportedDir, "LogDir() should return the same path as logDir()")
 }
 
 func TestInitAndLog(t *testing.T) {
@@ -57,10 +55,7 @@ func TestInitAndLog(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
 	// Initialize
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	// Log some messages
@@ -74,19 +69,12 @@ func TestInitAndLog(t *testing.T) {
 
 	// Check log file exists
 	logPath := LogPath()
-	if logPath == "" {
-		t.Fatal("LogPath() returned empty string after Init()")
-	}
-
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		t.Errorf("Log file does not exist: %s", logPath)
-	}
+	require.NotEmpty(t, logPath, "LogPath() should return a non-empty path after Init()")
+	assert.FileExists(t, logPath, "log file should exist after Init()")
 
 	// Read log file and verify content
 	content, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("Failed to read log file: %v", err)
-	}
+	require.NoError(t, err, "should be able to read the log file")
 
 	logContent := string(content)
 	expectedMessages := []string{
@@ -101,9 +89,7 @@ func TestInitAndLog(t *testing.T) {
 	}
 
 	for _, msg := range expectedMessages {
-		if !strings.Contains(logContent, msg) {
-			t.Errorf("Log file missing expected content: %q", msg)
-		}
+		assert.Contains(t, logContent, msg, "log file should contain expected message %q", msg)
 	}
 }
 
@@ -117,10 +103,7 @@ func TestContextLogger(t *testing.T) {
 	_ = os.Setenv("HOME", tmpDir)
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	EnableDebug()
@@ -133,12 +116,9 @@ func TestContextLogger(t *testing.T) {
 	ctx.Error("workflow failed: %s", "fatal error")
 
 	// Verify context prefix in logs
-	content, _ := os.ReadFile(LogPath())
-	logContent := string(content)
-
-	if !strings.Contains(logContent, "[matcher]") {
-		t.Error("Log file missing context prefix [matcher]")
-	}
+	content, err := os.ReadFile(LogPath())
+	require.NoError(t, err, "should be able to read the log file")
+	assert.Contains(t, string(content), "[matcher]", "log file should contain context prefix [matcher]")
 }
 
 func TestStartOperation(t *testing.T) {
@@ -151,10 +131,7 @@ func TestStartOperation(t *testing.T) {
 	_ = os.Setenv("HOME", tmpDir)
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	EnableDebug()
@@ -169,18 +146,13 @@ func TestStartOperation(t *testing.T) {
 	done2(os.ErrNotExist)
 
 	// Verify log content
-	content, _ := os.ReadFile(LogPath())
+	content, err := os.ReadFile(LogPath())
+	require.NoError(t, err, "should be able to read the log file")
 	logContent := string(content)
 
-	if !strings.Contains(logContent, "START workflow-match") {
-		t.Error("Missing START entry for workflow-match")
-	}
-	if !strings.Contains(logContent, "DONE workflow-match") {
-		t.Error("Missing DONE entry for workflow-match")
-	}
-	if !strings.Contains(logContent, "FAIL step-run") {
-		t.Error("Missing FAIL entry for step-run")
-	}
+	assert.Contains(t, logContent, "START workflow-match", "log should contain START entry for workflow-match")
+	assert.Contains(t, logContent, "DONE workflow-match", "log should contain DONE entry for workflow-match")
+	assert.Contains(t, logContent, "FAIL step-run", "log should contain FAIL entry for step-run")
 }
 
 func TestCleanOldLogs(t *testing.T) {
@@ -191,31 +163,25 @@ func TestCleanOldLogs(t *testing.T) {
 	newFile := filepath.Join(tmpDir, "hookflow-2099-01-01.log")
 	otherFile := filepath.Join(tmpDir, "other.txt")
 
-	_ = os.WriteFile(oldFile, []byte("old"), 0644)
-	_ = os.WriteFile(newFile, []byte("new"), 0644)
-	_ = os.WriteFile(otherFile, []byte("other"), 0644)
+	require.NoError(t, os.WriteFile(oldFile, []byte("old"), 0644), "should create old log file for test setup")
+	require.NoError(t, os.WriteFile(newFile, []byte("new"), 0644), "should create new log file for test setup")
+	require.NoError(t, os.WriteFile(otherFile, []byte("other"), 0644), "should create other file for test setup")
 
 	// Set old modification time
 	oldTime := time.Now().AddDate(0, 0, -30)
-	_ = os.Chtimes(oldFile, oldTime, oldTime)
+	require.NoError(t, os.Chtimes(oldFile, oldTime, oldTime), "should set old modification time for test setup")
 
 	// Run cleanup
 	cleanOldLogs(tmpDir, 7)
 
 	// Old log should be deleted
-	if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
-		t.Error("Old log file should have been deleted")
-	}
+	assert.NoFileExists(t, oldFile, "old log file should have been deleted after cleanup")
 
 	// New log should still exist
-	if _, err := os.Stat(newFile); os.IsNotExist(err) {
-		t.Error("New log file should not have been deleted")
-	}
+	assert.FileExists(t, newFile, "new log file should not have been deleted by cleanup")
 
 	// Non-log file should still exist
-	if _, err := os.Stat(otherFile); os.IsNotExist(err) {
-		t.Error("Non-log file should not have been deleted")
-	}
+	assert.FileExists(t, otherFile, "non-log file should not have been deleted by cleanup")
 }
 
 func TestLogLevelFiltering(t *testing.T) {
@@ -228,25 +194,19 @@ func TestLogLevelFiltering(t *testing.T) {
 	_ = os.Setenv("HOME", tmpDir)
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	// Default level is INFO, so DEBUG should be filtered
 	Debug("should be filtered")
 	Info("should appear")
 
-	content, _ := os.ReadFile(LogPath())
+	content, err := os.ReadFile(LogPath())
+	require.NoError(t, err, "should be able to read the log file")
 	logContent := string(content)
 
-	if strings.Contains(logContent, "should be filtered") {
-		t.Error("Debug message should be filtered at INFO level")
-	}
-	if !strings.Contains(logContent, "should appear") {
-		t.Error("Info message should appear")
-	}
+	assert.NotContains(t, logContent, "should be filtered", "debug message should be filtered at INFO level")
+	assert.Contains(t, logContent, "should appear", "info message should appear in log")
 }
 
 func TestTee(t *testing.T) {
@@ -259,27 +219,18 @@ func TestTee(t *testing.T) {
 	_ = os.Setenv("HOME", tmpDir)
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	// Tee should return a multi-writer
 	var buf strings.Builder
 	writer := Tee(&buf)
-	if writer == nil {
-		t.Fatal("Tee returned nil")
-	}
+	require.NotNil(t, writer, "Tee should return a non-nil writer")
 
 	// Writing to tee should write to our buffer
-	_, err = writer.Write([]byte("test output"))
-	if err != nil {
-		t.Fatalf("Write failed: %v", err)
-	}
-	if !strings.Contains(buf.String(), "test output") {
-		t.Error("Tee did not write to provided writer")
-	}
+	_, err := writer.Write([]byte("test output"))
+	require.NoError(t, err, "Write to Tee writer should succeed")
+	assert.Contains(t, buf.String(), "test output", "Tee should forward writes to the provided writer")
 }
 
 func TestTeeWithoutInit(t *testing.T) {
@@ -290,9 +241,7 @@ func TestTeeWithoutInit(t *testing.T) {
 	// Tee without init should return the original writer
 	var buf strings.Builder
 	writer := Tee(&buf)
-	if writer != &buf {
-		t.Error("Tee without init should return the original writer")
-	}
+	assert.Equal(t, &buf, writer, "Tee without init should return the original writer unchanged")
 }
 
 func TestContextLoggerWarnAndError(t *testing.T) {
@@ -305,26 +254,18 @@ func TestContextLoggerWarnAndError(t *testing.T) {
 	_ = os.Setenv("HOME", tmpDir)
 	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
-	err := Init()
-	if err != nil {
-		t.Fatalf("Init() failed: %v", err)
-	}
+	require.NoError(t, Init(), "Init() should succeed")
 	defer Close()
 
 	ctx := Context("test-ctx")
 	ctx.Warn("warning: %s", "test warning")
 	ctx.Error("error: %s", "test error")
 
-	content, _ := os.ReadFile(LogPath())
+	content, err := os.ReadFile(LogPath())
+	require.NoError(t, err, "should be able to read the log file")
 	logContent := string(content)
 
-	if !strings.Contains(logContent, "WARN") {
-		t.Error("Log should contain WARN level entry")
-	}
-	if !strings.Contains(logContent, "ERROR") {
-		t.Error("Log should contain ERROR level entry")
-	}
-	if !strings.Contains(logContent, "[test-ctx]") {
-		t.Error("Log should contain context prefix")
-	}
+	assert.Contains(t, logContent, "WARN", "log should contain WARN level entry")
+	assert.Contains(t, logContent, "ERROR", "log should contain ERROR level entry")
+	assert.Contains(t, logContent, "[test-ctx]", "log should contain context prefix [test-ctx]")
 }
