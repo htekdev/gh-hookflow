@@ -69,18 +69,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 
 ### 1. Load Processed Files Cache
 
-Check the repo-memory cache to see which files have been processed recently:
-
-```bash
-# Check if cache file exists
-CACHE_FILE="/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt"
-if [ -f "$CACHE_FILE" ]; then
-  echo "Found cache with $(wc -l < "$CACHE_FILE") processed files"
-  cat "$CACHE_FILE"
-else
-  echo "No cache found - first run"
-fi
-```
+Check the repo-memory cache at `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` to see which files have been processed recently. The file is optional: if it does not exist, treat this as the first run.
 
 The cache file contains one file path per line with a timestamp:
 ```
@@ -90,31 +79,14 @@ The cache file contains one file path per line with a timestamp:
 
 ### 2. Select Target Test File
 
-Find all Go test files and select one that hasn't been processed in the last 30 days:
+Find all Go test files and select one that has not been processed recently.
 
-```bash
-# Get all test files
-find . -name '*_test.go' -type f > /tmp/all_test_files.txt
-
-# Filter out recently processed files (last 30 days)
-CUTOFF_DATE=$(date -d '30 days ago' '+%Y-%m-%d' 2>/dev/null || date -v-30d '+%Y-%m-%d')
-
-# Create list of candidate files (not processed or processed >30 days ago)
-while IFS='|' read -r filepath timestamp; do
-  if [[ "$timestamp" < "$CUTOFF_DATE" ]]; then
-    echo "$filepath" >> /tmp/candidate_files.txt
-  fi
-done < "$CACHE_FILE" 2>/dev/null || true
-
-# If no cache or all files old, use all test files
-if [ ! -f /tmp/candidate_files.txt ]; then
-  cp /tmp/all_test_files.txt /tmp/candidate_files.txt
-fi
-
-# Select a random file from candidates
-TARGET_FILE=$(shuf -n 1 /tmp/candidate_files.txt)
-echo "Selected file: $TARGET_FILE"
-```
+- Use the allowed `find . -name '*_test.go' -type f` command to list candidate test files.
+- Compare that list against the cache contents in your reasoning instead of relying on shell pipelines or temporary-file scripts.
+- Prefer a file that is not present in the cache at all.
+- If every file is already present in the cache, prefer the oldest cached entry.
+- If you cannot reliably determine recency from the available tools, pick a single reasonable file and continue rather than failing the workflow.
+- Do not depend on shell commands such as `date`, `shuf`, `cp`, `sed`, `awk`, `sort`, `mv`, or multiline shell loops unless those capabilities are explicitly available.
 
 **Important**: If no unprocessed files remain, output a message and exit:
 ```
@@ -154,23 +126,7 @@ Use the Serena MCP server to perform deep semantic analysis of the selected test
 
 Examine what's being tested and what's missing:
 
-```bash
-# Get the source file
-SOURCE_FILE=$(echo "$TARGET_FILE" | sed 's/_test\.go$/.go/')
-
-if [ -f "$SOURCE_FILE" ]; then
-  # Extract function signatures from source
-  grep -E '^func [A-Z]' "$SOURCE_FILE" | sed 's/func //' | cut -d'(' -f1
-  
-  # Extract test function names
-  grep -E '^func Test' "$TARGET_FILE" | sed 's/func //' | cut -d'(' -f1
-  
-  # Compare to find untested functions
-  echo "=== Comparing coverage ==="
-else
-  echo "Source file not found: $SOURCE_FILE"
-fi
-```
+Derive `SOURCE_FILE` by replacing the `_test.go` suffix with `.go` in your reasoning. If that source file exists, inspect both files with Serena and simple reads to compare exported functions against the current test coverage. Use the allowed `grep -r 'func Test' . --include='*_test.go'` command only when it is helpful for quick repository-wide confirmation.
 
 Calculate:
 - **Functions in source**: Count of exported functions
@@ -230,13 +186,11 @@ Create reports that:
 Create a detailed issue with this structure:
 
 ```markdown
-# Improve Test Quality: [FILE_PATH]
-
-## Overview
+### Overview
 
 The test file `[FILE_PATH]` has been selected for quality improvement by the Testify Uber Super Expert. This issue provides specific, actionable recommendations to enhance test quality, coverage, and maintainability using testify best practices.
 
-## Current State
+### Current State
 
 - **Test File**: `[FILE_PATH]`
 - **Source File**: `[SOURCE_FILE]` (if exists)
@@ -244,7 +198,7 @@ The test file `[FILE_PATH]` has been selected for quality improvement by the Tes
 - **Lines of Code**: [LOC] lines
 - **Last Modified**: [DATE if available]
 
-## Test Quality Analysis
+### Test Quality Analysis
 
 ### Strengths ✅
 
@@ -274,7 +228,7 @@ require.NoError(t, err, "operation should succeed")
 assert.Equal(t, expected, result, "result should match expected value")
 ```
 
-**Why this matters**: Testify provides clearer error messages, better test output, and is the standard used throughout this codebase (see `scratchpad/testing.md`).
+**Why this matters**: Testify provides clearer error messages, better test output, and is the standard used throughout this codebase.
 
 #### 2. Table-Driven Tests
 
@@ -322,7 +276,7 @@ func TestFunctionName(t *testing.T) {
 }
 ```
 
-**Why this matters**: Table-driven tests are easier to extend, maintain, and understand. They follow the pattern used in `scratchpad/testing.md`.
+**Why this matters**: Table-driven tests are easier to extend, maintain, and understand.
 
 #### 3. Test Coverage Gaps
 
@@ -391,7 +345,7 @@ require.NoError(t, err, "setup should succeed without errors")
 4. **Medium**: Improve test names and organization
 5. **Low**: Add assertion messages
 
-### Best Practices from `scratchpad/testing.md`
+### Best Practices from the repository
 - ✅ Use `require.*` for critical setup (stops test on failure)
 - ✅ Use `assert.*` for test validations (continues checking)
 - ✅ Write table-driven tests with `t.Run()` and descriptive names
@@ -400,14 +354,11 @@ require.NoError(t, err, "setup should succeed without errors")
 
 ### Testing Commands
 ```bash
-# Run tests for this file
-go test -v [PACKAGE_PATH] -run [TEST_NAME]
+# Run the package containing the selected file
+go test -v [PACKAGE_PATH]
 
-# Run tests with coverage
-go test -cover [PACKAGE_PATH]
-
-# Run all tests
-make test-unit
+# Run the repository test suite
+go test ./... -timeout 300s
 ```
 
 ## Acceptance Criteria
@@ -417,13 +368,13 @@ make test-unit
 - [ ] All critical functions in source file have corresponding tests
 - [ ] Test names are descriptive and follow conventions
 - [ ] All assertions include helpful messages
-- [ ] Tests pass: `make test-unit`
-- [ ] Code follows patterns in `scratchpad/testing.md`
+- [ ] Tests pass: `go test ./... -timeout 300s`
+- [ ] Code follows existing patterns in this repository
 
 ## Additional Context
 
-- **Repository Testing Guidelines**: See `scratchpad/testing.md` for comprehensive testing patterns
-- **Example Tests**: Look at recent test files in `pkg/workflow/*_test.go` for examples
+- **Repository Testing Guidelines**: Prefer the testify patterns already used in files such as `internal/logging/logger_test.go`, `internal/expression/evaluator_test.go`, and `internal/session/transcript_test.go`
+- **Example Tests**: Look at recent test files under `internal/**` and `cmd/hookflow/**`
 - **Testify Documentation**: https://github.com/stretchr/testify
 
 ---
@@ -441,20 +392,9 @@ make test-unit
 
 After creating the issue, update the cache to record this file as processed:
 
-```bash
-# Append to cache with current date
-CACHE_FILE="/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt"
-mkdir -p "$(dirname "$CACHE_FILE")"
-TODAY=$(date '+%Y-%m-%d')
-echo "${TARGET_FILE}|${TODAY}" >> "$CACHE_FILE"
+Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Record one line in the format `path|YYYY-MM-DD`, using the current analysis date from the workflow context. Keep only one entry per file when you can do so safely.
 
-# Sort and deduplicate cache (keep most recent date for each file)
-sort -t'|' -k1,1 -k2,2r "$CACHE_FILE" | \
-  awk -F'|' '!seen[$1]++' > "${CACHE_FILE}.tmp"
-mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
-
-echo "✅ Updated cache with processed file: $TARGET_FILE"
-```
+If cache maintenance is not possible with the available tools, do not fail the workflow for that reason alone. Prefer successfully creating the issue or producing a no-op result over aborting.
 
 ## Output Requirements
 
@@ -463,8 +403,10 @@ Your workflow MUST follow this sequence:
 1. **Load cache** - Check which files have been processed
 2. **Select file** - Choose one unprocessed or old file (>30 days)
 3. **Analyze file** - Use Serena to deeply analyze the test file
-4. **Create issue** - Generate detailed issue with specific improvements
+4. **Create issue** - Use the `create_issue` safe-output tool to generate a detailed issue with specific improvements
 5. **Update cache** - Record the file as processed with today's date
+
+If you decide no issue should be created, use the `noop` safe-output tool with a clear explanation instead of failing silently.
 
 ### Output Format
 
@@ -499,14 +441,14 @@ Total Processed Files: [COUNT]
 - **One file per day**: Focus on providing high-quality, detailed analysis for a single file
 - **Use Serena extensively**: Leverage the language server for semantic understanding
 - **Be specific and actionable**: Provide code examples, not vague advice
-- **Follow repository patterns**: Reference `scratchpad/testing.md` and existing test patterns
-- **Cache management**: Always update the cache after processing
+- **Follow repository patterns**: Reference existing tests in this repository
+- **Cache management**: Update the cache when the available tools make it safe to do so
 - **30-day cycle**: Files become eligible for re-analysis after 30 days
 - **Priority to uncovered code**: Prefer files with lower test coverage when selecting
 
 ## Testify Best Practices Reference
 
-### Common Patterns from `scratchpad/testing.md`
+### Common Patterns from this repository
 
 **Use `require.*` for setup:**
 ```go
