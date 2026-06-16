@@ -86,7 +86,7 @@ Find all Go test files and select one that has not been processed recently.
 - Prefer a file that is not present in the cache at all.
 - If every file is already present in the cache, prefer the oldest cached entry.
 - If you cannot reliably determine recency from the available tools, pick a single reasonable file and continue rather than failing the workflow.
-- Do not depend on shell commands such as `date`, `shuf`, `cp`, `sed`, `awk`, `sort`, `mv`, or multiline shell loops unless those capabilities are explicitly available.
+- Do not depend on shell commands such as `date`, `shuf`, `cp`, `sed`, `awk`, `sort`, `mv`, or multiline shell loops.
 
 **Important**: If no unprocessed files remain, output a message and exit:
 ```
@@ -392,7 +392,7 @@ go test ./... -timeout 300s
 
 After creating the issue, update the cache to record this file as processed:
 
-Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Record one line in the format `path|YYYY-MM-DD`, using the current analysis date from the workflow context. Keep only one entry per file when you can do so safely.
+Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Append one line in the format `path|YYYY-MM-DD`, using the current analysis date from the workflow context. If you can safely deduplicate entries for the same file while keeping the most recent date, do so; otherwise, appending is acceptable.
 
 If cache maintenance is not possible with the available tools, do not fail the workflow for that reason alone. Prefer successfully creating the issue or producing a no-op result over aborting.
 
