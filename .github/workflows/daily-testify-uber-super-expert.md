@@ -61,7 +61,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 ## Current Context
 
 - **Repository**: ${{ github.repository }}
-- **Analysis Date**: Use today's UTC date in `YYYY-MM-DD` format when writing cache entries. If no direct date tool is available, use the GitHub workflow run date visible in the prompt/context.
+- **Analysis Date**: Use today's UTC date in `YYYY-MM-DD` format when writing cache entries. If no direct date tool is available, use the GitHub workflow run date visible in the prompt/context. If neither is available, use the current system date if you can obtain it; otherwise omit the timestamp and explain that limitation.
 - **Workspace**: ${{ github.workspace }}
 - **Cache Location**: `/tmp/gh-aw/repo-memory/default/memory/testify-expert/`
 
@@ -69,7 +69,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 
 ### 1. Load Processed Files Cache
 
-Check the repo-memory cache at `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` to see which files have been processed recently. The file is optional: if it does not exist, treat this as the first run and consider all test files valid candidates.
+Check the repo-memory cache at `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` to see which files have been processed recently. The file is optional: if it does not exist, treat this as the first run and consider all test files as unprocessed candidates eligible for selection.
 
 The cache file contains one file path per line with a timestamp:
 ```
@@ -85,7 +85,7 @@ Find all Go test files and select one that has not been processed recently.
 - Compare that list against the cache contents in your reasoning instead of relying on shell pipelines or temporary-file scripts.
 - Prefer a file that is not present in the cache at all.
 - If every file is already present in the cache, prefer the oldest cached entry.
-- If you cannot reliably determine recency from the available tools, pick the first file alphabetically from the candidate list and continue rather than failing the workflow.
+- If you cannot reliably determine recency from the available tools, pick the first file alphabetically from the candidate list, continue rather than failing the workflow, and mention in your final output that the selection may not fully respect the 30-day cycle.
 - Do not depend on shell commands such as `date`, `shuf`, `cp`, `sed`, `awk`, `sort`, `mv`, or multiline shell loops.
 
 **Important**: If no unprocessed files remain, output a message and exit:
@@ -394,7 +394,7 @@ After creating the issue, update the cache to record this file as processed:
 
 Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Append one line in the format `path|YYYY-MM-DD`, using the analysis date described in the **Current Context** section above. If you can safely deduplicate entries for the same file while keeping the most recent date, do so; otherwise, appending is acceptable.
 
-If cache maintenance is not possible with the available tools, do not fail the workflow for that reason alone. Prefer successfully creating the issue or producing a no-op result over aborting.
+If cache maintenance is not possible with the available tools, do not fail the workflow for that reason alone. If an issue was created successfully, the workflow should still succeed even when cache update fails. If no issue could be created, use the `noop` safe-output tool with an explanation instead of aborting.
 
 ## Output Requirements
 
