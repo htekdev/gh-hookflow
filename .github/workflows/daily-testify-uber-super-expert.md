@@ -61,7 +61,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 ## Current Context
 
 - **Repository**: ${{ github.repository }}
-- **Analysis Date**: $(date +%Y-%m-%d)
+- **Analysis Date**: Use today's UTC date in `YYYY-MM-DD` format when writing cache entries. If no direct date tool is available, use the GitHub workflow run date visible in the prompt/context.
 - **Workspace**: ${{ github.workspace }}
 - **Cache Location**: `/tmp/gh-aw/repo-memory/default/memory/testify-expert/`
 
@@ -69,7 +69,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 
 ### 1. Load Processed Files Cache
 
-Check the repo-memory cache at `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` to see which files have been processed recently. The file is optional: if it does not exist, treat this as the first run.
+Check the repo-memory cache at `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` to see which files have been processed recently. The file is optional: if it does not exist, treat this as the first run and consider all test files valid candidates.
 
 The cache file contains one file path per line with a timestamp:
 ```
@@ -85,7 +85,7 @@ Find all Go test files and select one that has not been processed recently.
 - Compare that list against the cache contents in your reasoning instead of relying on shell pipelines or temporary-file scripts.
 - Prefer a file that is not present in the cache at all.
 - If every file is already present in the cache, prefer the oldest cached entry.
-- If you cannot reliably determine recency from the available tools, pick a single reasonable file and continue rather than failing the workflow.
+- If you cannot reliably determine recency from the available tools, pick the first file alphabetically from the candidate list and continue rather than failing the workflow.
 - Do not depend on shell commands such as `date`, `shuf`, `cp`, `sed`, `awk`, `sort`, `mv`, or multiline shell loops.
 
 **Important**: If no unprocessed files remain, output a message and exit:
@@ -126,7 +126,7 @@ Use the Serena MCP server to perform deep semantic analysis of the selected test
 
 Examine what's being tested and what's missing:
 
-Derive `SOURCE_FILE` by replacing the `_test.go` suffix with `.go` in your reasoning. If that source file exists, inspect both files with Serena and simple reads to compare exported functions against the current test coverage. Use the allowed `grep -r 'func Test' . --include='*_test.go'` command only when it is helpful for quick repository-wide confirmation.
+Derive `SOURCE_FILE` by replacing the `_test.go` suffix with `.go` in your reasoning. If that source file exists, inspect both files with Serena first; if you need raw file contents, use the environment's standard file-reading tool instead of ad-hoc shell pipelines. Use the allowed `grep -r 'func Test' . --include='*_test.go'` command only when it is helpful for quick repository-wide confirmation.
 
 Calculate:
 - **Functions in source**: Count of exported functions
@@ -392,7 +392,7 @@ go test ./... -timeout 300s
 
 After creating the issue, update the cache to record this file as processed:
 
-Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Append one line in the format `path|YYYY-MM-DD`, using the current analysis date from the workflow context. If you can safely deduplicate entries for the same file while keeping the most recent date, do so; otherwise, appending is acceptable.
+Update `/tmp/gh-aw/repo-memory/default/memory/testify-expert/processed_files.txt` using the available file-editing tools. Append one line in the format `path|YYYY-MM-DD`, using the analysis date described in the **Current Context** section above. If you can safely deduplicate entries for the same file while keeping the most recent date, do so; otherwise, appending is acceptable.
 
 If cache maintenance is not possible with the available tools, do not fail the workflow for that reason alone. Prefer successfully creating the issue or producing a no-op result over aborting.
 
