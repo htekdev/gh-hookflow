@@ -61,7 +61,7 @@ Analyze one Go test file daily that hasn't been processed recently, evaluate its
 ## Current Context
 
 - **Repository**: ${{ github.repository }}
-- **Analysis Date**: When writing cache entries, use the GitHub workflow run date in `YYYY-MM-DD` format if it is available in the prompt/context; otherwise omit the timestamp and explain that limitation.
+- **Analysis Date**: When writing cache entries, use one consistent `YYYY-MM-DD` date value for the current run. If you cannot obtain a reliable date, omit the timestamp and explain that limitation.
 - **Workspace**: ${{ github.workspace }}
 - **Cache Location**: `/tmp/gh-aw/repo-memory/default/memory/testify-expert/`
 
@@ -94,9 +94,9 @@ Find all Go test files and select one that has not been processed recently.
 The testify expert will resume analysis after the cache expires.
 ```
 
-### 3. Analyze Test File with Serena
+### 3. Analyze Test File with the Language Server Tool
 
-Use the Serena MCP server to perform deep semantic analysis of the selected test file:
+Use the available language server / semantic code analysis tool (Serena in this workflow) to perform deep semantic analysis of the selected test file:
 
 1. **Read the file contents** and understand its structure
 2. **Identify the corresponding source file** (e.g., `pkg/workflow/compiler_test.go` → `pkg/workflow/compiler.go`)
@@ -126,7 +126,7 @@ Use the Serena MCP server to perform deep semantic analysis of the selected test
 
 Examine what's being tested and what's missing:
 
-Derive `SOURCE_FILE` by replacing the `_test.go` suffix with `.go` in your reasoning. If that source file exists, inspect both files with Serena first; if you need raw file contents, use the environment's standard file-reading tool instead of ad-hoc shell pipelines. Use the allowed `grep -r 'func Test' . --include='*_test.go'` command only when it is helpful for quick repository-wide confirmation.
+Derive `SOURCE_FILE` by replacing the `_test.go` suffix with `.go` in your reasoning. If that source file exists, inspect both files with the available language server tool first; if you need raw file contents, use the environment's standard file-reading tool instead of ad-hoc shell pipelines. Use the allowed `grep -r 'func Test' . --include='*_test.go'` command only when it is helpful for quick repository-wide confirmation.
 
 Calculate:
 - **Functions in source**: Count of exported functions
@@ -402,11 +402,11 @@ Your workflow MUST follow this sequence:
 
 1. **Load cache** - Check which files have been processed
 2. **Select file** - Choose one unprocessed or old file (>30 days)
-3. **Analyze file** - Use Serena to deeply analyze the test file
-4. **Create issue** - Use the `create_issue` safe-output tool to generate a detailed issue with specific improvements
+3. **Analyze file** - Use the available language server tool to deeply analyze the test file
+4. **Create issue** - Use the safe-output tool `create_issue` to generate a detailed issue with specific improvements
 5. **Update cache** - Record the file as processed with today's date
 
-If you decide no issue should be created, use the `noop` safe-output tool with a clear explanation instead of failing silently.
+If you decide no issue should be created, use the safe-output tool `noop` with a clear explanation instead of failing silently.
 
 ### Output Format
 
@@ -439,7 +439,7 @@ Total Processed Files: [COUNT]
 ## Important Guidelines
 
 - **One file per day**: Focus on providing high-quality, detailed analysis for a single file
-- **Use Serena extensively**: Leverage the language server for semantic understanding
+- **Use the language server tool extensively**: Leverage semantic analysis for deeper understanding
 - **Be specific and actionable**: Provide code examples, not vague advice
 - **Follow repository patterns**: Reference existing tests in this repository
 - **Cache management**: Update the cache when the available tools make it safe to do so
