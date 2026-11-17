@@ -1,13 +1,18 @@
 ---
 on:
-  schedule: daily
+  schedule:
+  - cron: "19 17 * * *"
   skip-if-match: is:issue is:open in:title "[testify-expert]"
   workflow_dispatch: null
 permissions:
+  copilot-requests: write
   contents: read
   issues: read
   pull-requests: read
 imports:
+- uses: github/gh-aw/.github/workflows/shared/mcp/serena.md@399a445fe2d8926c616b54b1b82a16b5b2be4445
+  with:
+    languages: ["go"]
 - github/gh-aw/.github/workflows/shared/mood.md@852cb06ad52958b402ed982b69957ffc57ca0619
 - github/gh-aw/.github/workflows/shared/reporting.md@852cb06ad52958b402ed982b69957ffc57ca0619
 - github/gh-aw/.github/workflows/shared/safe-output-app.md@852cb06ad52958b402ed982b69957ffc57ca0619
@@ -44,8 +49,6 @@ tools:
     - memory/testify-expert/*.json
     - memory/testify-expert/*.txt
     max-file-size: 51200
-  serena:
-  - go
 tracker-id: daily-testify-uber-super-expert
 ---
 {{#runtime-import? .github/shared-instructions.md}}
