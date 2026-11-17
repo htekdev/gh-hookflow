@@ -1,0 +1,76 @@
+name: Agentic Workflow Auth Tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+      - name: Run existing Go unit and integration suite
+        run: go test -coverprofile=go-coverage.out ./...
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24.22.1"
+          package-manager-cache: false
+      - name: Test authentication contract with enforced coverage
+        run: |
+          mkdir -p coverage
+          node --test --experimental-test-coverage --test-coverage-include=scripts/ghaw-auth.mjs --test-coverage-lines=80 --test-coverage-branches=75 --test-coverage-functions=80 --test-reporter=spec --test-reporter=lcov --test-reporter-destination=stdout --test-reporter-destination=coverage/ghaw-auth.lcov scripts/ghaw-auth.test.mjs
+      - uses: github/gh-aw/actions/setup-cli@399a445fe2d8926c616b54b1b82a16b5b2be4445 # v1.2.2
+        with:
+          version: v1.2.2
+      - name: Validate authored workflow with supported compiler
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh aw compile daily-testify-uber-super-expert --no-emit --no-check-update
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: ghaw-auth-coverage
+          path: |
+            coverage/
+            go-coverage.out
+          retention-days: 7
+  copilot-auth-smoke:
+    name: Copilot tokenless auth smoke
+    # No checkout, repository code, custom instructions, MCP servers, or tools.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      copilot-requests: write
+    steps:
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24.22.1"
+          package-manager-cache: false
+      - run: npm install --global @github/copilot@1.0.103
+      - name: Verify one tool-free inference
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          S2STOKENS: "true"
+          COPILOT_ALLOW_ALL: "false"
+          COPILOT_AUTO_UPDATE: "false"
+          COPILOT_HOME: ${{ runner.temp }}/copilot-auth-smoke
+        run: |
+          mkdir -p "${RUNNER_TEMP}/copilot-auth-empty"
+          cd "${RUNNER_TEMP}/copilot-auth-empty"
+          response="$(copilot --no-auto-update --no-custom-instructions --disable-builtin-mcps \
+            --no-experimental --no-ask-user --deny-tool read write shell url memory \
+            --available-tools --prompt "Reply exactly AUTH_OK. Do not use any tools." --silent)"
+          if [[ "$response" != "AUTH_OK" ]]; then
+            echo "::error::Copilot did not return the authentication sentinel."
+            exit 1
+          fi
+          echo "Built-in Actions-token inference returned AUTH_OK."

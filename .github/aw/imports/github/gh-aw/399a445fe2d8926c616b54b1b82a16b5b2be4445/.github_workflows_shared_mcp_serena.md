@@ -1,0 +1,57 @@
+---
+# Serena MCP Server - Multi-Language Code Analysis
+# Language Server Protocol (LSP)-based tool for deep semantic code analysis.
+# Supports 30+ languages through per-language LSP integration.
+#
+# Documentation: https://github.com/oraios/serena
+#
+# Usage:
+#   imports:
+#     - uses: shared/mcp/serena.md
+#       with:
+#         languages: ["go"]                          # one language
+#         languages: ["go", "typescript"]            # multiple languages
+#         languages: ["typescript", "python"]        # with node/python runtimes
+#
+# The 'languages' input configures the Serena MCP server language list.
+
+import-schema:
+  path:
+    type: string
+    default: '\${PATH}'
+    description: >
+      PATH inside the Serena container. Runtime paths must be covered by its
+      declared mounts; the default is the MCP gateway PATH, not the runner PATH.
+  languages:
+    type: array
+    items:
+      type: string
+    required: true
+    description: >
+      List of programming language identifiers to enable for Serena LSP analysis.
+      Supported values include: go, typescript, javascript, python, rust, java,
+      ruby, csharp, cpp, c, kotlin, scala, swift, php, and more.
+
+mcp-servers:
+  serena:
+    container: "ghcr.io/oraios/serena:1.7.0"
+    args:
+      - "--network"
+      - "host"
+    entrypoint: "/workspaces/serena/.venv/bin/serena"
+    entrypointArgs:
+      - "start-mcp-server"
+      - "--context"
+      - "codex"
+      - "--project"
+      - \${GITHUB_WORKSPACE}
+    env:
+      PATH: ${{ github.aw.import-inputs.path }}
+    mounts:
+      - \${GITHUB_WORKSPACE}:\${GITHUB_WORKSPACE}:rw
+      - \${RUNNER_TOOL_CACHE}:\${RUNNER_TOOL_CACHE}:ro
+---
+
+## Serena Code Analysis
+
+Serena is enabled for **${{ github.aw.import-inputs.languages }}** in `${{ github.workspace }}`. Start by calling `activate_project` with that workspace path, then prefer Serena semantic tools for symbol lookup, references, docs, diagnostics, and structured edits.
